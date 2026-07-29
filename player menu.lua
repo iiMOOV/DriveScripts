@@ -619,110 +619,99 @@ local function drawGrip(X, Y, W, H)
 end
 
 --=================================================================
--- [14] FEATURE: BOOST (معدل - مانع الطيران مع تحكم بالنعومة)
---   ضغطة واحدة -> تشغيل، ضغطة ثانية -> إيقاف.
---   إلغاء تلقائي عند لمس الفرامل.
---   السرعة الهدف متغيرة بسلايدر (185 - 320).
---   يبدأ البوست من سرعة 5 كم/س.
+-- [14] FEATURE: BOOST  (toggle · anti-fly · adjustable speed/smoothing)
+--   Press once = ON, press again = OFF. Braking cancels it.
+--   Target speed slider 185-320. Instant or Gradual acceleration.
+--   Only the settings UI was restyled to match the panel — the
+--   behavior is identical to the tuned version.
 --=================================================================
-local BOOST_MIN_KMH    = 5
+local BOOST_MIN_KMH = 5
 
--- إعدادات البوست
-local boostSettings = {
-  mode = 1,          -- 1: Instant, 2: Gradual
-  accelPower = 15,   -- درجة التنعيم (Smoothing) - السلايدر
-  cooldown = 5.0,    -- مدة التبريد بالثواني
-  targetSpeed = 230  -- السرعة الهدف القابلة للتغيير
+-- persisted so settings survive a rejoin
+local boostStore = ac.storage{
+  mode        = 1,      -- 1 = Instant , 2 = Gradual
+  accelPower  = 15.0,   -- smoothing (Gradual only)
+  cooldown    = 5.0,    -- seconds
+  targetSpeed = 230.0,  -- km/h
 }
 
-local boostCd       = 0        -- التبريد الحالي
+local boostCd       = 0
 local boostPrevKey  = false
 local boostPulse    = 0
-local boostBtnLatch = false    
-local isBoostActive = false    
+local boostBtnLatch = false
+local isBoostActive = false
 
--- دالة لاستخراج الاتجاه الأفقي فقط (عشان السيارة ما تطير)
 local function getFlatDirection(car)
   local f = vec3(car.look.x, 0, car.look.z)
   if f:length() < 1e-3 then return vec3(0, 0, 1) end
   return f:normalize()
 end
 
--- دالة إيقاف البوست
 local function stopBoost()
   if not isBoostActive then return end
   isBoostActive = false
-  boostCd = boostSettings.cooldown 
+  boostCd = boostStore.cooldown
   ui.toast(ui.Icons.Warning, "DT Drive: Boost Deactivated - Cooldown Started")
 end
 
--- دالة تشغيل البوست
 local function startBoost()
   local car = ac.getCar(0)
   if not car then return false end
-
   if car.speedKmh < BOOST_MIN_KMH then
     ui.toast(ui.Icons.Warning, "DT Drive: Speed must be over 5 km/h!")
     return false
   end
-
   isBoostActive = true
-  Core.ghostStart()   -- حماية 10 ثواني
+  Core.ghostStart()
   ui.toast(ui.Icons.Confirm, "DT Drive: Boost Activated!")
   return true
 end
 
--- دالة التبديل (Toggle)
 local function toggleBoost()
-  if isBoostActive then
-    stopBoost()
-  elseif boostCd <= 0 then
-    startBoost()
-  end
+  if isBoostActive then stopBoost()
+  elseif boostCd <= 0 then startBoost() end
 end
 
 local function boostUpdate(dt)
   boostPulse = boostPulse + dt
   local car = ac.getCar(0)
 
-  -- التبريد ينزل فقط إذا كان البوست طافي
-  if boostCd > 0 and not isBoostActive then 
-    boostCd = boostCd - dt 
-  end
+  if boostCd > 0 and not isBoostActive then boostCd = boostCd - dt end
 
   if isBoostActive and car then
-    -- إلغاء بالفرامل
     if car.brake > 0.05 then
       stopBoost()
     else
-      -- حساب السرعة بالمتر/ثانية
-      local target_ms = boostSettings.targetSpeed / 3.6
-      
-      -- الاتجاه الأفقي فقط لمنع الطيران
-      local flatLook = getFlatDirection(car)
-      
+      local target_ms = boostStore.targetSpeed / 3.6
+      local flatLook  = getFlatDirection(car)
       local currentVel = car.velocity
-      local targetVel = flatLook * target_ms
-      targetVel.y = currentVel.y -- نحافظ على السرعة العمودية (الجاذبية)
-      
-      if boostSettings.mode == 1 then
-        -- فجأة (Instant)
+      local targetVel  = flatLook * target_ms
+      targetVel.y = currentVel.y
+      if boostStore.mode == 1 then
         physics.setCarVelocity(0, targetVel)
       else
-        -- حبة حبة (Gradual) بناءً على سلايدر النعومة
-        local newVel = math.lerp(currentVel, targetVel, math.min(1, dt * boostSettings.accelPower))
-        newVel.y = currentVel.y -- تأكيد إن محور Y ما يتأثر بالنعومة عشان ما ترتفع
+        local newVel = math.lerp(currentVel, targetVel, math.min(1, dt * boostStore.accelPower))
+        newVel.y = currentVel.y
         physics.setCarVelocity(0, newVel)
       end
     end
   end
 
-  -- المفتاح
   local down = (not isTyping()) and ui.keyboardButtonDown(keyStore.boostKey)
-  if down and not boostPrevKey then
-    toggleBoost()
-  end
+  if down and not boostPrevKey then toggleBoost() end
   boostPrevKey = down
+end
+
+-- panel-styled labelled slider (same look as the rest of the panel)
+local function boostSlider(label, x, y, w, id, val, mn, mx, fmt)
+  dwLeftBox(label, 13, x, y, 260, 16, ACC)
+  ui.setCursor(vec2(x, y + 18))
+  ui.setNextItemWidth(w)
+  ui.pushStyleColor(ui.StyleColor.SliderGrab, ACC)
+  ui.pushStyleColor(ui.StyleColor.FrameBg, rgbm(1, 1, 1, 0.05))
+  local nv = ui.slider(id, val, mn, mx, fmt)
+  ui.popStyleColor(2)
+  return nv
 end
 
 local function drawBoost(X, Y, W, H)
@@ -731,28 +720,26 @@ local function drawBoost(X, Y, W, H)
 
   sectionTitle("BOOST", "BOOST", X, Y, W)
 
-  local cardH  = 92
-  local BS     = 148
-  local stackH = cardH + 30 + BS + 175 
-  local sy     = Y + math.max(0, (H - stackH) * 0.5)
-
-  -- ===== بطاقة السرعة =====
+  -- ===== speed card =====
+  local cardH = 84
+  local sy    = Y + 46
   ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + cardH), rgbm(1, 1, 1, 0.05), 14)
   ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + cardH * 0.5), rgbm(1, 1, 1, 0.03), 14)
   ui.drawRect(vec2(X, sy), vec2(X + W, sy + cardH), rgbm(ACC.r, ACC.g, ACC.b, 0.28), 14, nil, 1)
-  dwBox("Current Speed", 12, X, sy + 10, W, 14, CDm)
-  dwMono(tostring(spd), 46, X, sy + 26, W, 46, CC)
-  dwBox(string.format("km/h   ·   Target %d", boostSettings.targetSpeed), 11, X, sy + 70, W, 12, CDm)
-  local pct = math.min(spd / boostSettings.targetSpeed, 1)
-  local by = sy + cardH - 10
+  dwBox("Current Speed", 12, X, sy + 8, W, 14, CDm)
+  dwMono(tostring(spd), 42, X, sy + 22, W, 42, CC)
+  dwBox(string.format("km/h   ·   Target %d", math.floor(boostStore.targetSpeed)), 11, X, sy + 62, W, 12, CDm)
+  local pct = math.min(spd / math.max(boostStore.targetSpeed, 1), 1)
+  local by  = sy + cardH - 9
   ui.drawRectFilled(vec2(X + 16, by), vec2(X + W - 16, by + 3), rgbm(0, 0, 0, 0.45), 2)
   if pct > 0 then
     ui.drawRectFilled(vec2(X + 16, by), vec2(X + 16 + (W - 32) * pct, by + 3), pct >= 1 and CGR or COR, 2)
   end
 
-  -- ===== الزر المربّع =====
+  -- ===== square button =====
+  local BS  = 118
   local bx  = X + (W - BS) * 0.5
-  local byy = sy + cardH + 20
+  local byy = sy + cardH + 16
   ui.setCursor(vec2(bx, byy))
   local cl  = ui.invisibleButton("##bst", vec2(BS, BS))
   local act = ui.itemActive()
@@ -767,85 +754,98 @@ local function drawBoost(X, Y, W, H)
   end
 
   if isBoostActive then
-    -- شغال (Active)
-    glowRect(bx, byy, bx + BS, byy + BS, CGR, 20)
+    glowRect(bx, byy, bx + BS, byy + BS, CGR, 18)
     local pulse = 0.90 + 0.10 * math.sin(boostPulse * 10)
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(CGR.r * pulse, CGR.g * pulse, CGR.b * pulse, 1), 20)
-    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.6), 20, nil, 2)
-    dwBox("ACTIVE", 28, bx, byy + BS * 0.5 - 18, BS, 36, CW)
-    
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(CGR.r * pulse, CGR.g * pulse, CGR.b * pulse, 1), 18)
+    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.6), 18, nil, 2)
+    dwBox("ACTIVE", 24, bx, byy + BS * 0.5 - 16, BS, 32, CW)
     if clicked then stopBoost() end
 
   elseif boostCd > 0 then
-    -- تبريد
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.06), 20)
-    local pr = 1 - boostCd / boostSettings.cooldown
-    ui.drawRectFilled(vec2(bx, byy + BS * (1 - pr)), vec2(bx + BS, byy + BS), rgbm(CPU.r, CPU.g, CPU.b, 0.22), 20)
-    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.14), 20, nil, 1)
-    dwMono(string.format("%.1f", boostCd), 40, bx, byy + BS * 0.5 - 30, BS, 44, CW)
-    dwBox("SEC", 13, bx, byy + BS * 0.5 + 18, BS, 16, CDm)
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.06), 18)
+    local pr = 1 - boostCd / math.max(boostStore.cooldown, 0.01)
+    ui.drawRectFilled(vec2(bx, byy + BS * (1 - pr)), vec2(bx + BS, byy + BS), rgbm(CPU.r, CPU.g, CPU.b, 0.22), 18)
+    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.14), 18, nil, 1)
+    dwMono(string.format("%.1f", boostCd), 34, bx, byy + BS * 0.5 - 26, BS, 38, CW)
+    dwBox("SEC", 12, bx, byy + BS * 0.5 + 14, BS, 16, CDm)
+
   else
-    -- جاهز
-    glowRect(bx, byy, bx + BS, byy + BS, COR, 20)
+    glowRect(bx, byy, bx + BS, byy + BS, COR, 18)
     local pulse = 0.90 + 0.10 * math.sin(boostPulse * 4)
     local col = hov and rgbm(1, 0.58, 0.20, 1) or rgbm(COR.r * pulse + 0.05, COR.g * pulse, COR.b * pulse, 1)
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), col, 20)
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS * 0.5), rgbm(1, 1, 1, 0.16), 20)
-    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.32), 20, nil, 2)
-    local ln = 14
-    for _, cc in ipairs({ { bx + 12, byy + 12, 1, 1 }, { bx + BS - 12, byy + 12, -1, 1 },
-                          { bx + 12, byy + BS - 12, 1, -1 }, { bx + BS - 12, byy + BS - 12, -1, -1 } }) do
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), col, 18)
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS * 0.5), rgbm(1, 1, 1, 0.16), 18)
+    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.32), 18, nil, 2)
+    local ln = 12
+    for _, cc in ipairs({ { bx + 10, byy + 10, 1, 1 }, { bx + BS - 10, byy + 10, -1, 1 },
+                          { bx + 10, byy + BS - 10, 1, -1 }, { bx + BS - 10, byy + BS - 10, -1, -1 } }) do
       ui.drawLine(vec2(cc[1], cc[2]), vec2(cc[1] + ln * cc[3], cc[2]), rgbm(0, 0, 0, 0.5), 2)
       ui.drawLine(vec2(cc[1], cc[2]), vec2(cc[1], cc[2] + ln * cc[4]), rgbm(0, 0, 0, 0.5), 2)
     end
-    dwBox("BOOST", 28, bx, byy + BS * 0.5 - 18, BS, 36, DK)
-    
+    dwBox("BOOST", 24, bx, byy + BS * 0.5 - 16, BS, 32, DK)
     if clicked then startBoost() end
   end
 
-  -- سطر الحالة
+  -- status line
   if spd < BOOST_MIN_KMH and boostCd <= 0 and not isBoostActive then
-    dwBox("Speed must be > 5 km/h", 13, X, byy + BS + 10, W, 18, CR)
+    dwBox("Speed must be over 5 km/h", 13, X, byy + BS + 8, W, 18, CR)
   else
-    local statusText = isBoostActive and "Brake to Stop" or string.format("Ready -> %d km/h", boostSettings.targetSpeed)
-    dwBox(statusText, 13, X, byy + BS + 10, W, 18, CC)
+    local statusText = isBoostActive and "Brake to stop"
+      or string.format("Ready  ·  %d km/h", math.floor(boostStore.targetSpeed))
+    dwBox(statusText, 13, X, byy + BS + 8, W, 18, CC)
   end
 
-  -- ===== إعدادات البوست =====
-  local setY = byy + BS + 35
-  ui.setCursor(vec2(X + 10, setY))
-  ui.pushFont(ui.Font.Small)
-  
-  -- اختيار وضع التسارع
-  ui.text("Mode:")
-  ui.sameLine()
-  if ui.radioButton("Instant", boostSettings.mode == 1) then boostSettings.mode = 1 end
-  ui.sameLine()
-  if ui.radioButton("Gradual", boostSettings.mode == 2) then boostSettings.mode = 2 end
-  
-  -- سلايدر السرعة الهدف (185 - 320)
-  ui.offsetCursorY(5)
-  ui.setCursorX(X + 10)
-  ui.pushItemWidth(W - 120)
-  boostSettings.targetSpeed = ui.slider("Target Speed##spd", boostSettings.targetSpeed, 185, 320, "%.0f")
-  
-  -- شريط السحب لقوة التسارع (يظهر فقط إذا اختار حبة حبة)
-  ui.offsetCursorY(5)
-  ui.setCursorX(X + 10)
-  if boostSettings.mode == 2 then
-    boostSettings.accelPower = ui.slider("Smoothing##accel", boostSettings.accelPower, 1, 50, "%.1f")
-  else
-    ui.offsetCursorY(22) -- موازنة المساحة
-  end
+  -- ===== settings panel (scrolls if window is short) =====
+  local gy   = byy + BS + 30
+  local setH = math.max((Y + H - 38) - gy, 70)
+  ui.setCursor(vec2(X, gy))
+  ui.drawRectFilled(vec2(X, gy), vec2(X + W, gy + setH), rgbm(1, 1, 1, 0.028), 12)
+  ui.drawRect(vec2(X, gy), vec2(X + W, gy + setH), rgbm(1, 1, 1, 0.06), 12, nil, 1)
+  ui.childWindow("##bset", vec2(W, setH), function()
+    local ww = ui.windowWidth() - 20
+    local ly = 8
 
-  -- سلايدر الكولد داون
-  ui.offsetCursorY(5)
-  ui.setCursorX(X + 10)
-  boostSettings.cooldown = ui.slider("Cooldown (s)##cd", boostSettings.cooldown, 1, 120, "%.0f")
-  ui.popItemWidth()
-  ui.popFont()
+    -- acceleration mode
+    dwLeftBox("Acceleration", 13, 10, ly, 200, 16, ACC)
+    ly = ly + 20
+    local ns = segToggle(10, ly, ww, 32, { "Instant", "Gradual" }, boostStore.mode)
+    if ns ~= boostStore.mode then boostStore.mode = ns end
+    ly = ly + 44
 
-  -- ===== المفتاح =====
+    -- target speed
+    local nv = boostSlider("Target Speed", 10, ly, ww, "##btgt",
+      boostStore.targetSpeed, 185, 320, "  %.0f km/h")
+    if math.abs(nv - boostStore.targetSpeed) > 0.01 then boostStore.targetSpeed = nv end
+    ly = ly + 48
+
+    -- smoothing (Gradual only)
+    if boostStore.mode == 2 then
+      nv = boostSlider("Smoothing  (higher = snappier)", 10, ly, ww, "##baccel",
+        boostStore.accelPower, 1, 50, "  %.0f")
+      if math.abs(nv - boostStore.accelPower) > 0.01 then boostStore.accelPower = nv end
+      ly = ly + 48
+    end
+
+    -- cooldown
+    nv = boostSlider("Cooldown", 10, ly, ww, "##bcd",
+      boostStore.cooldown, 1, 120, "  %.0f s")
+    if math.abs(nv - boostStore.cooldown) > 0.01 then boostStore.cooldown = nv end
+    ly = ly + 48
+
+    -- reset
+    if bigButton(10, ly, ww, 32, "Reset to defaults", rgbm(0.30, 0.31, 0.36, 1), "##brst") then
+      boostStore.mode        = 1
+      boostStore.accelPower  = 15.0
+      boostStore.cooldown    = 5.0
+      boostStore.targetSpeed = 230.0
+    end
+    ly = ly + 40
+
+    dwBox("Press to toggle · brake to cancel", 12, 10, ly, ww, 16, CDm)
+    ui.dummy(vec2(1, ly + 24))
+  end)
+
+  -- ===== key =====
   keyPicker(X, Y + H - 30, W, "Boost Key", keyName(keyStore.boostKey), function()
     keyStore.boostKey = nextKey(keyStore.boostKey, keyStore.rewindKey)
     boostPrevKey = false
