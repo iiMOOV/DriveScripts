@@ -622,31 +622,30 @@ end
 -- [14] FEATURE: BOOST (معدل)
 --   ضغطة واحدة -> تشغيل، ضغطة ثانية -> إيقاف.
 --   إلغاء تلقائي عند لمس الفرامل.
---   وضعين للتسارع: فجأة (Instant) أو حبة حبة (Gradual) مع تحكم بالقوة.
---   التبريد يبدأ بعد الإيقاف ومدته قابلة للتعديل.
+--   السرعة الهدف متغيرة بسلايدر (185 - 320).
+--   يبدأ البوست من سرعة 5 كم/س.
 --=================================================================
-local BOOST_SPEED_KMH  = 230
-local BOOST_SPEED_MS   = BOOST_SPEED_KMH / 3.6
-local BOOST_MIN_KMH    = 50
+local BOOST_MIN_KMH    = 5
 
--- إعدادات البوست الجديدة (ممكن تربطها بالحفظ لو حاب مستقبلاً)
+-- إعدادات البوست الجديدة
 local boostSettings = {
-  mode = 1,          -- 1: Instant (فجأة), 2: Gradual (حبة حبة)
-  accelPower = 15,   -- قوة التسارع التدريجي
-  cooldown = 20.0    -- مدة التبريد بالثواني
+  mode = 1,          -- 1: Instant, 2: Gradual
+  accelPower = 15,   -- درجة التنعيم (Smoothing)
+  cooldown = 5.0,    -- مدة التبريد بالثواني (تم التعديل لـ 5)
+  targetSpeed = 230  -- السرعة الهدف القابلة للتغيير
 }
 
 local boostCd       = 0        -- التبريد الحالي
 local boostPrevKey  = false
 local boostPulse    = 0
-local boostBtnLatch = false    -- ضغطة واحدة فقط من زر الماوس
-local isBoostActive = false    -- حالة البوست (شغال ولا طافي)
+local boostBtnLatch = false    
+local isBoostActive = false    
 
 -- دالة إيقاف البوست
 local function stopBoost()
   if not isBoostActive then return end
   isBoostActive = false
-  boostCd = boostSettings.cooldown -- يبدأ التبريد من لحظة الإيقاف
+  boostCd = boostSettings.cooldown 
   ui.toast(ui.Icons.Warning, "DT Drive: Boost Deactivated - Cooldown Started")
 end
 
@@ -656,7 +655,7 @@ local function startBoost()
   if not car then return false end
 
   if car.speedKmh < BOOST_MIN_KMH then
-    ui.toast(ui.Icons.Warning, "DT Drive: Speed must be over 50 km/h!")
+    ui.toast(ui.Icons.Warning, "DT Drive: Speed must be over 5 km/h!")
     return false
   end
 
@@ -685,19 +684,20 @@ local function boostUpdate(dt)
   end
 
   if isBoostActive and car then
-    -- إلغاء بالفرامل (إذا لمس الفرامل بنسبة أكثر من 5%)
+    -- إلغاء بالفرامل
     if car.brake > 0.05 then
       stopBoost()
     else
-      -- تطبيق السرعة حسب الإعدادات
+      -- حساب السرعة بالمتر/ثانية بناءً على السلايدر
+      local target_ms = boostSettings.targetSpeed / 3.6
+      
       if boostSettings.mode == 1 then
         -- فجأة (Instant)
-        physics.setCarVelocity(0, car.look * BOOST_SPEED_MS)
+        physics.setCarVelocity(0, car.look * target_ms)
       else
         -- حبة حبة (Gradual)
         local currentVel = car.velocity
-        local targetVel = car.look * BOOST_SPEED_MS
-        -- دمج ناعم للسرعة بناءً على القوة المحددة
+        local targetVel = car.look * target_ms
         local newVel = math.lerp(currentVel, targetVel, math.min(1, dt * boostSettings.accelPower))
         physics.setCarVelocity(0, newVel)
       end
@@ -716,21 +716,21 @@ local function drawBoost(X, Y, W, H)
   local car = ac.getCar(0)
   local spd = car and math.floor(car.speedKmh) or 0
 
-  sectionTitle("البوست", "BOOST", X, Y, W)
+  sectionTitle("BOOST", "BOOST", X, Y, W)
 
   local cardH  = 92
   local BS     = 148
-  local stackH = cardH + 30 + BS + 120 -- زودنا الارتفاع عشان الإعدادات
+  local stackH = cardH + 30 + BS + 175 -- المساحة للسلايدرات الإضافية
   local sy     = Y + math.max(0, (H - stackH) * 0.5)
 
   -- ===== بطاقة السرعة =====
   ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + cardH), rgbm(1, 1, 1, 0.05), 14)
   ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + cardH * 0.5), rgbm(1, 1, 1, 0.03), 14)
   ui.drawRect(vec2(X, sy), vec2(X + W, sy + cardH), rgbm(ACC.r, ACC.g, ACC.b, 0.28), 14, nil, 1)
-  dwBox("سرعتك الحالية", 12, X, sy + 10, W, 14, CDm)
+  dwBox("Current Speed", 12, X, sy + 10, W, 14, CDm)
   dwMono(tostring(spd), 46, X, sy + 26, W, 46, CC)
-  dwBox(string.format("كم/س   ·   الهدف %d", BOOST_SPEED_KMH), 11, X, sy + 70, W, 12, CDm)
-  local pct = math.min(spd / BOOST_SPEED_KMH, 1)
+  dwBox(string.format("km/h   ·   Target %d", boostSettings.targetSpeed), 11, X, sy + 70, W, 12, CDm)
+  local pct = math.min(spd / boostSettings.targetSpeed, 1)
   local by = sy + cardH - 10
   ui.drawRectFilled(vec2(X + 16, by), vec2(X + W - 16, by + 3), rgbm(0, 0, 0, 0.45), 2)
   if pct > 0 then
@@ -745,7 +745,6 @@ local function drawBoost(X, Y, W, H)
   local act = ui.itemActive()
   local hov = ui.itemHovered()
 
-  -- ضغطة واحدة فقط
   local clicked = false
   if (cl or act) and not boostBtnLatch then
     boostBtnLatch = true
@@ -756,7 +755,7 @@ local function drawBoost(X, Y, W, H)
 
   if isBoostActive then
     -- شغال (Active)
-    glowRect(bx, byy, bx + BS, byy + BS, CGR, 20) -- لون أخضر يوضح إنه شغال
+    glowRect(bx, byy, bx + BS, byy + BS, CGR, 20)
     local pulse = 0.90 + 0.10 * math.sin(boostPulse * 10)
     ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(CGR.r * pulse, CGR.g * pulse, CGR.b * pulse, 1), 20)
     ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.6), 20, nil, 2)
@@ -771,7 +770,7 @@ local function drawBoost(X, Y, W, H)
     ui.drawRectFilled(vec2(bx, byy + BS * (1 - pr)), vec2(bx + BS, byy + BS), rgbm(CPU.r, CPU.g, CPU.b, 0.22), 20)
     ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.14), 20, nil, 1)
     dwMono(string.format("%.1f", boostCd), 40, bx, byy + BS * 0.5 - 30, BS, 44, CW)
-    dwBox("ثانية", 13, bx, byy + BS * 0.5 + 18, BS, 16, CDm)
+    dwBox("SEC", 13, bx, byy + BS * 0.5 + 18, BS, 16, CDm)
   else
     -- جاهز
     glowRect(bx, byy, bx + BS, byy + BS, COR, 20)
@@ -793,9 +792,9 @@ local function drawBoost(X, Y, W, H)
 
   -- سطر الحالة
   if spd < BOOST_MIN_KMH and boostCd <= 0 and not isBoostActive then
-    dwBox("لازم تكون سرعتك فوق 50 كم/س", 13, X, byy + BS + 10, W, 18, CR)
+    dwBox("Speed must be > 5 km/h", 13, X, byy + BS + 10, W, 18, CR)
   else
-    local statusText = isBoostActive and "البوست شغال! المس الفرامل للإيقاف" or string.format("انطلق إلى %d كم/س", BOOST_SPEED_KMH)
+    local statusText = isBoostActive and "Brake to Stop" or string.format("Ready -> %d km/h", boostSettings.targetSpeed)
     dwBox(statusText, 13, X, byy + BS + 10, W, 18, CC)
   end
 
@@ -805,33 +804,36 @@ local function drawBoost(X, Y, W, H)
   ui.pushFont(ui.Font.Small)
   
   -- اختيار وضع التسارع
-  ui.text("نوع البوست:")
+  ui.text("Mode:")
   ui.sameLine()
-  if ui.radioButton("فجأة (Instant)", boostSettings.mode == 1) then boostSettings.mode = 1 end
+  if ui.radioButton("Instant", boostSettings.mode == 1) then boostSettings.mode = 1 end
   ui.sameLine()
-  if ui.radioButton("حبة حبة (Gradual)", boostSettings.mode == 2) then boostSettings.mode = 2 end
+  if ui.radioButton("Gradual", boostSettings.mode == 2) then boostSettings.mode = 2 end
   
-  ui.offsetCursorY(5)
-  ui.setCursorX(X + 10)
-  
-  -- شريط السحب لقوة التسارع (يظهر فقط إذا اختار حبة حبة)
-  if boostSettings.mode == 2 then
-    ui.pushItemWidth(W - 120)
-    boostSettings.accelPower = ui.slider("قوة التسارع##accel", boostSettings.accelPower, 1, 50, "%.1f")
-    ui.popItemWidth()
-  else
-    ui.offsetCursorY(22) -- موازنة المساحة لو كان فجأة
-  end
-
+  -- سلايدر السرعة الهدف (185 - 320)
   ui.offsetCursorY(5)
   ui.setCursorX(X + 10)
   ui.pushItemWidth(W - 120)
-  boostSettings.cooldown = ui.slider("مدة التبريد (ثواني)##cd", boostSettings.cooldown, 5, 120, "%.0f")
+  boostSettings.targetSpeed = ui.slider("Target Speed##spd", boostSettings.targetSpeed, 185, 320, "%.0f")
+  
+  -- شريط السحب لقوة التسارع (يظهر فقط إذا اختار حبة حبة)
+  ui.offsetCursorY(5)
+  ui.setCursorX(X + 10)
+  if boostSettings.mode == 2 then
+    boostSettings.accelPower = ui.slider("Smoothing##accel", boostSettings.accelPower, 1, 50, "%.1f")
+  else
+    ui.offsetCursorY(22) -- موازنة المساحة
+  end
+
+  -- سلايدر الكولد داون
+  ui.offsetCursorY(5)
+  ui.setCursorX(X + 10)
+  boostSettings.cooldown = ui.slider("Cooldown (s)##cd", boostSettings.cooldown, 1, 120, "%.0f")
   ui.popItemWidth()
   ui.popFont()
 
   -- ===== المفتاح =====
-  keyPicker(X, Y + H - 30, W, "مفتاح البوست", keyName(keyStore.boostKey), function()
+  keyPicker(X, Y + H - 30, W, "Boost Key", keyName(keyStore.boostKey), function()
     keyStore.boostKey = nextKey(keyStore.boostKey, keyStore.rewindKey)
     boostPrevKey = false
   end)
