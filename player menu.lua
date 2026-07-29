@@ -619,7 +619,7 @@ local function drawGrip(X, Y, W, H)
 end
 
 --=================================================================
--- [14] FEATURE: BOOST (معدل)
+-- [14] FEATURE: BOOST (معدل - مانع الطيران مع تحكم بالنعومة)
 --   ضغطة واحدة -> تشغيل، ضغطة ثانية -> إيقاف.
 --   إلغاء تلقائي عند لمس الفرامل.
 --   السرعة الهدف متغيرة بسلايدر (185 - 320).
@@ -627,11 +627,11 @@ end
 --=================================================================
 local BOOST_MIN_KMH    = 5
 
--- إعدادات البوست الجديدة
+-- إعدادات البوست
 local boostSettings = {
   mode = 1,          -- 1: Instant, 2: Gradual
-  accelPower = 15,   -- درجة التنعيم (Smoothing)
-  cooldown = 5.0,    -- مدة التبريد بالثواني (تم التعديل لـ 5)
+  accelPower = 15,   -- درجة التنعيم (Smoothing) - السلايدر
+  cooldown = 5.0,    -- مدة التبريد بالثواني
   targetSpeed = 230  -- السرعة الهدف القابلة للتغيير
 }
 
@@ -640,6 +640,13 @@ local boostPrevKey  = false
 local boostPulse    = 0
 local boostBtnLatch = false    
 local isBoostActive = false    
+
+-- دالة لاستخراج الاتجاه الأفقي فقط (عشان السيارة ما تطير)
+local function getFlatDirection(car)
+  local f = vec3(car.look.x, 0, car.look.z)
+  if f:length() < 1e-3 then return vec3(0, 0, 1) end
+  return f:normalize()
+end
 
 -- دالة إيقاف البوست
 local function stopBoost()
@@ -688,17 +695,23 @@ local function boostUpdate(dt)
     if car.brake > 0.05 then
       stopBoost()
     else
-      -- حساب السرعة بالمتر/ثانية بناءً على السلايدر
+      -- حساب السرعة بالمتر/ثانية
       local target_ms = boostSettings.targetSpeed / 3.6
+      
+      -- الاتجاه الأفقي فقط لمنع الطيران
+      local flatLook = getFlatDirection(car)
+      
+      local currentVel = car.velocity
+      local targetVel = flatLook * target_ms
+      targetVel.y = currentVel.y -- نحافظ على السرعة العمودية (الجاذبية)
       
       if boostSettings.mode == 1 then
         -- فجأة (Instant)
-        physics.setCarVelocity(0, car.look * target_ms)
+        physics.setCarVelocity(0, targetVel)
       else
-        -- حبة حبة (Gradual)
-        local currentVel = car.velocity
-        local targetVel = car.look * target_ms
+        -- حبة حبة (Gradual) بناءً على سلايدر النعومة
         local newVel = math.lerp(currentVel, targetVel, math.min(1, dt * boostSettings.accelPower))
+        newVel.y = currentVel.y -- تأكيد إن محور Y ما يتأثر بالنعومة عشان ما ترتفع
         physics.setCarVelocity(0, newVel)
       end
     end
@@ -720,7 +733,7 @@ local function drawBoost(X, Y, W, H)
 
   local cardH  = 92
   local BS     = 148
-  local stackH = cardH + 30 + BS + 175 -- المساحة للسلايدرات الإضافية
+  local stackH = cardH + 30 + BS + 175 
   local sy     = Y + math.max(0, (H - stackH) * 0.5)
 
   -- ===== بطاقة السرعة =====
@@ -838,6 +851,7 @@ local function drawBoost(X, Y, W, H)
     boostPrevKey = false
   end)
 end
+
 --=================================================================
 -- [15] FEATURE: EXTRAS  (الأكسترا: تثبيت مفاتيح السيارة)
 --=================================================================
