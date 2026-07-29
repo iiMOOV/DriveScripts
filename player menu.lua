@@ -318,6 +318,7 @@ local function drawTeleport(X, Y, W, H)
   end
 end
 
+
 --=================================================================
 -- [11] FEATURE: MAP  (خريطة الحلبة + انتقال بالدبل كليك)
 --=================================================================
@@ -332,7 +333,7 @@ local mapFirst = true
 local mapTri   = 8
 local mp3, md3 = vec3(), vec3()
 local mp2, md2, mdx2 = vec2(), vec2(), vec2()
-
+ 
 -- تحميل الخريطة مرة وحدة عند تشغيل السكربت (محمي حتى لا يطيح السكربت لو الحلبة بلا map.ini)
 if ac.getPatchVersionCode() >= 2000 then
   pcall(function()
@@ -350,7 +351,7 @@ if ac.getPatchVersionCode() >= 2000 then
     end
   end)
 end
-
+ 
 local function drawMap(X, Y, W, H)
   sectionTitle("الخريطة", "MAP", X, Y, W)
   dwRightBox("دبل كليك للانتقال · بكرة للتكبير", 12, X, Y + 26, W - 44, 14, CDm)
@@ -364,7 +365,7 @@ local function drawMap(X, Y, W, H)
     if not mapReady then
       dwBox("لا توجد خريطة لهذه الحلبة", 15, 0, 10, ui.windowWidth(), 22, CR); return
     end
-
+ 
     if mapFirst then
       mapScale = math.min((ui.windowWidth() - mapPad.x) / mapImgSize.x,
                           (ui.windowHeight() - mapPad.y) / mapImgSize.y)
@@ -372,9 +373,9 @@ local function drawMap(X, Y, W, H)
       mapDrawSize = mapImgSize * mapScale
       if ui.isImageReady(mapImage) then mapFirst = false end
     end
-
+ 
     ui.drawImage(mapImage, -mapOfs, -mapOfs + mapDrawSize)
-
+ 
     -- زوم بالبكرة
     if ui.windowHovered() and ac.getUI().mouseWheel ~= 0 then
       local w = ac.getUI().mouseWheel
@@ -392,7 +393,7 @@ local function drawMap(X, Y, W, H)
         mapCarScale = mapScale / mapIniVals.SCALE_FACTOR
       end
     end
-
+ 
     -- بقية اللاعبين
     for i = ac.getSim().carsCount - 1, 1, -1 do
       local c = ac.getCar(i)
@@ -404,7 +405,7 @@ local function drawMap(X, Y, W, H)
                               mp2 - md2 * mapTri + mdx2 * mapTri * 0.75, rgbm(0.95, 0.25, 0.15, 1))
       end
     end
-
+ 
     -- سيارتك
     mp3 = ac.getCameraPosition()
     mp2:set(mp3.x, mp3.z):add(mapOffset):scale(mapCarScale):add(-mapOfs)
@@ -415,7 +416,7 @@ local function drawMap(X, Y, W, H)
     ui.drawTriangleFilled(mp2 + md2 * mapTri,
                           mp2 - md2 * mapTri - mdx2 * mapTri * 0.75,
                           mp2 - md2 * mapTri + mdx2 * mapTri * 0.75, sc)
-
+ 
     -- دبل كليك = انتقال
     if ui.mouseDoubleClicked(ui.MouseButton.Left) and ui.windowHovered() and Core.ready() then
       local cp = (ui.mouseLocalPos() + mapOfs) / mapCarScale - mapOffset
@@ -423,13 +424,13 @@ local function drawMap(X, Y, W, H)
       Core.ghostStart()
       Core.startCooldown()
     end
-
+ 
     -- سحب الخريطة
     ui.invisibleButton('###md', ui.windowSize())
     if ui.mouseDown() and ui.itemHovered() then mapOfs = mapOfs - ui.mouseDelta() end
   end)
 end
-
+ 
 --=================================================================
 -- [12] FEATURE: SKINS  (تطبيق بالاسم + مزامنة أونلاين)
 --   تنبيه: لا تغيّر شكل syncCarSkin — تغييره يكسر التوافق مع
