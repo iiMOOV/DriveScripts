@@ -911,7 +911,7 @@ local function drawExtras(X, Y, W, H)
     hazardsLocked and rgbm(ACC.r, ACC.g, ACC.b, 0.16) or rgbm(1, 1, 1, 0.03), 12)
   ui.drawRect(vec2(X, hy), vec2(X + W, hy + hh), rgbm(ACC.r, ACC.g, ACC.b, 0.25), 12, nil, 1)
   -- اسم موسّط بين الزر واليمين
-  dwBox("HAZARDS  ·  الفلاشر", 16, 100, hy, W - 114, hh, hazardsLocked and CW or CDm)
+  dwBox("HAZARDS  ·  الفلشر", 16, 100, hy, W - 114, hh, hazardsLocked and CW or CDm)
   -- زر التبديل (يسار)
   local pw, ph, px, py = 76, 30, X + 14, hy + (hh - 30) * 0.5
   ui.setCursor(vec2(px, py))
@@ -1108,7 +1108,7 @@ local function drawRewind(X, Y, W, H)
 
     -- مدة التسجيل
     nv = rewindSlider("مدة التسجيل  (كم ثانية يحفظ)", 10, ly, ww, "##rmax",
-      rewindStore.maxSec, 5, 60, "  %.0f ثانية")
+      rewindStore.maxSec, 5, 60, "  %.0f second")
     if math.abs(nv - rewindStore.maxSec) > 0.01 then rewindStore.maxSec = nv end
     ly = ly + 48
 
