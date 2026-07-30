@@ -863,7 +863,9 @@ local function drawBoost(X, Y, W, H)
 end
 
 --=================================================================
--- [15] FEATURE: EXTRAS  (الأكسترا: تثبيت مفاتيح السيارة)
+-- [15] FEATURE: EXTRAS  (الأكسترا + زر الفلاشر HAZARDS الثابت)
+--   الفلاشر: نثبّته بإعادة تفعيله كل ما ينطفئ — نفس مبدأ قفل الأكسترا.
+--   يستخدم ac.setTurningLights مع TurningLights.Hazards.
 --=================================================================
 local extraKeys   = { "extraA","extraB","extraC","extraD","extraE","extraF","extraG","extraH","extraI" }
 local extraLocked = {}
@@ -871,9 +873,23 @@ local extraAvail  = {}
 local extraInit   = false
 for i = 1, #extraKeys do extraLocked[i] = false end
 
+local hazardsLocked = false   -- الفلاشر مثبّت؟
+
 local function extrasUpdate()
   local car = ac.getCar(0)
   if not car then return end
+
+  -- تثبيت الفلاشر: لو مقفول ومو مفعّل، نرجّع نفعّله
+  if hazardsLocked then
+    local on = false
+    -- بعض إصدارات CSP تعرض حالة الفلاشر بأسماء مختلفة — نتحقق بأمان
+    if car.hazardLights ~= nil then on = car.hazardLights
+    elseif car.turningLights ~= nil then on = (car.turningLights == ac.TurningLights.Hazards) end
+    if not on then
+      pcall(function() ac.setTurningLights(ac.TurningLights.Hazards) end)
+    end
+  end
+
   if not extraInit then
     for i, key in ipairs(extraKeys) do extraAvail[i] = (car[key] ~= nil) end
     extraInit = true
@@ -888,8 +904,31 @@ end
 
 local function drawExtras(X, Y, W, H)
   sectionTitle("الأكسترا", "EXTRAS", X, Y, W)
-  local listY = Y + 40
-  local listH = H - 40
+
+  -- ===== زر الفلاشر HAZARDS الثابت (فوق) =====
+  local hy, hh = Y + 40, 48
+  ui.drawRectFilled(vec2(X, hy), vec2(X + W, hy + hh),
+    hazardsLocked and rgbm(ACC.r, ACC.g, ACC.b, 0.16) or rgbm(1, 1, 1, 0.03), 12)
+  ui.drawRect(vec2(X, hy), vec2(X + W, hy + hh), rgbm(ACC.r, ACC.g, ACC.b, 0.25), 12, nil, 1)
+  -- اسم موسّط بين الزر واليمين
+  dwBox("HAZARDS  ·  الفلاشر", 16, 100, hy, W - 114, hh, hazardsLocked and CW or CDm)
+  -- زر التبديل (يسار)
+  local pw, ph, px, py = 76, 30, X + 14, hy + (hh - 30) * 0.5
+  ui.setCursor(vec2(px, py))
+  local hcl = ui.invisibleButton("##hazbtn", vec2(pw, ph))
+  ui.drawRectFilled(vec2(px, py), vec2(px + pw, py + ph),
+    hazardsLocked and ACC or rgbm(0.28, 0.29, 0.33, 1), 14)
+  dwBox(hazardsLocked and "ON" or "OFF", 14, px, py, pw, ph, hazardsLocked and DK or CW)
+  if hcl then
+    hazardsLocked = not hazardsLocked
+    pcall(function()
+      ac.setTurningLights(hazardsLocked and ac.TurningLights.Hazards or ac.TurningLights.None)
+    end)
+  end
+
+  -- ===== قائمة الأكسترا (تحت الفلاشر) =====
+  local listY = hy + hh + 10
+  local listH = (Y + H) - listY
   ui.setCursor(vec2(X, listY))
   ui.drawRectFilled(vec2(X, listY), vec2(X + W, listY + listH), rgbm(1, 1, 1, 0.028), 12)
   ui.drawRect(vec2(X, listY), vec2(X + W, listY + listH), rgbm(1, 1, 1, 0.06), 12, nil, 1)
@@ -905,11 +944,11 @@ local function drawExtras(X, Y, W, H)
         -- اسم الإضافة موسّط في المساحة بين الزر واليمين
         dwBox("EXTRA " .. string.upper(string.sub(key, 6)), 16, 100, ry, ww - 114, 44, locked and CW or CDm)
         -- زر التبديل (يسار)
-        local pw, ph, px, py = 76, 28, 14, ry + 8
-        ui.setCursor(vec2(px, py))
-        local cl = ui.invisibleButton("##ex" .. i, vec2(pw, ph))
-        ui.drawRectFilled(vec2(px, py), vec2(px + pw, py + ph), locked and ACC or rgbm(0.28, 0.29, 0.33, 1), 14)
-        dwBox(locked and "ON" or "OFF", 14, px, py, pw, ph, locked and DK or CW)
+        local bpw, bph, bpx, bpy = 76, 28, 14, ry + 8
+        ui.setCursor(vec2(bpx, bpy))
+        local cl = ui.invisibleButton("##ex" .. i, vec2(bpw, bph))
+        ui.drawRectFilled(vec2(bpx, bpy), vec2(bpx + bpw, bpy + bph), locked and ACC or rgbm(0.28, 0.29, 0.33, 1), 14)
+        dwBox(locked and "ON" or "OFF", 14, bpx, bpy, bpw, bph, locked and DK or CW)
         if cl then
           extraLocked[i] = not locked
           pcall(function() ac.setExtraSwitch(i - 1, extraLocked[i]) end)
@@ -923,14 +962,32 @@ local function drawExtras(X, Y, W, H)
 end
 
 --=================================================================
--- [16] FEATURE: REWIND  (الرجوع بالزمن)
+-- [16] FEATURE: REWIND  (الرجوع بالزمن + تحكم كامل مثل البوست)
+--   امسك المفتاح للرجوع. لوحة إعدادات مطابقة للبوست:
+--     · سرعة الرجوع (كم أسرع من الزمن الحقيقي)
+--     · مدة التسجيل (كم ثانية يحفظ للخلف)
+--     · المفتاح من المنتقي
+--   القيم محفوظة في ac.storage — تبقى بعد الخروج.
+--   ملاحظة: مدة التسجيل تُطبّق فوراً؛ لو صغّرتها ينقص المخزون،
+--   ولو كبّرتها يبدأ يمتلئ للحد الجديد.
 --=================================================================
-local REWIND_MAX_FRAMES = math.floor(CFG.REWIND_MAX_SEC / CFG.REWIND_INTERVAL)
+local rewindStore = ac.storage{
+  maxSec   = CFG.REWIND_MAX_SEC * 1.0,   -- مدة التسجيل بالثواني
+  speed    = CFG.REWIND_SPEED * 1.0,     -- مضاعف سرعة الرجوع
+}
+
+-- أزرار جاهزة لسرعة الرجوع
+local REWIND_SPEED_PRESETS = { { "بطيء", 1.0 }, { "عادي", 2.0 }, { "سريع", 4.0 }, { "فوري", 8.0 } }
+
 local rHistory      = {}
 local rRecordTimer  = 0
 local rIsRewinding  = false
 local rWasRewinding = false
 local rLastState    = nil
+
+local function rewindMaxFrames()
+  return math.floor(rewindStore.maxSec / CFG.REWIND_INTERVAL)
+end
 
 local function rewindUpdate(dt)
   local car = ac.getCar(0)
@@ -940,7 +997,7 @@ local function rewindUpdate(dt)
 
   if down and #rHistory > 0 then
     rIsRewinding = true; rWasRewinding = true
-    local popN = math.floor((dt * CFG.REWIND_SPEED) / CFG.REWIND_INTERVAL)
+    local popN = math.floor((dt * rewindStore.speed) / CFG.REWIND_INTERVAL)
     if popN < 1 then popN = 1 end
     for _ = 1, popN do if #rHistory > 0 then rLastState = table.remove(rHistory) end end
     if rLastState then
@@ -963,56 +1020,110 @@ local function rewindUpdate(dt)
         up   = vec3(car.up.x, car.up.y, car.up.z),
         vel  = vec3(car.velocity.x, car.velocity.y, car.velocity.z),
       })
-      if #rHistory > REWIND_MAX_FRAMES then table.remove(rHistory, 1) end
+      -- نقص الزائد فوراً لو صغّر اللاعب مدة التسجيل
+      while #rHistory > rewindMaxFrames() do table.remove(rHistory, 1) end
     end
   end
 end
 
+-- سلايدر بعنوان (نفس ستايل البوست)
+local function rewindSlider(label, x, y, w, id, val, mn, mx, fmt)
+  dwLeftBox(label, 13, x, y, 260, 16, ACC)
+  ui.setCursor(vec2(x, y + 18))
+  ui.setNextItemWidth(w)
+  ui.pushStyleColor(ui.StyleColor.SliderGrab, ACC)
+  ui.pushStyleColor(ui.StyleColor.FrameBg, rgbm(1, 1, 1, 0.05))
+  local nv = ui.slider(id, val, mn, mx, fmt)
+  ui.popStyleColor(2)
+  return nv
+end
+
 local function drawRewind(X, Y, W, H)
   local histSec = #rHistory * CFG.REWIND_INTERVAL
-  local ready = histSec > 2.0
+  local ready   = histSec > 2.0
   sectionTitle("الرجوع بالزمن", "REWIND", X, Y, W)
 
-  local cardH  = 92
-  local BS     = 148
-  local stackH = cardH + 30 + BS + 44
-  local sy     = Y + math.max(0, (H - stackH) * 0.5)
-
-  -- بطاقة الذاكرة المسجّلة
+  -- ===== بطاقة الذاكرة =====
+  local cardH = 84
+  local sy    = Y + 46
   ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + cardH), rgbm(1, 1, 1, 0.05), 14)
   ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + cardH * 0.5), rgbm(1, 1, 1, 0.03), 14)
   ui.drawRect(vec2(X, sy), vec2(X + W, sy + cardH), rgbm(ACC.r, ACC.g, ACC.b, 0.28), 14, nil, 1)
-  dwBox("الذاكرة المسجّلة", 12, X, sy + 10, W, 14, CDm)
-  dwMono(string.format("%.1f / %.0f", histSec, CFG.REWIND_MAX_SEC), 40, X, sy + 26, W, 44, ready and CGR or CC)
-  dwBox("ثانية", 11, X, sy + 70, W, 12, CDm)
-  local pct = math.min(histSec / CFG.REWIND_MAX_SEC, 1)
-  local by = sy + cardH - 10
+  dwBox("الذاكرة المسجّلة", 12, X, sy + 8, W, 14, CDm)
+  dwMono(string.format("%.1f / %.0f", histSec, rewindStore.maxSec), 40, X, sy + 22, W, 42, ready and CGR or CC)
+  dwBox("ثانية", 11, X, sy + 62, W, 12, CDm)
+  local pct = math.min(histSec / math.max(rewindStore.maxSec, 1), 1)
+  local by  = sy + cardH - 9
   ui.drawRectFilled(vec2(X + 16, by), vec2(X + W - 16, by + 3), rgbm(0, 0, 0, 0.45), 2)
   if pct > 0 then ui.drawRectFilled(vec2(X + 16, by), vec2(X + 16 + (W - 32) * pct, by + 3), ACC, 2) end
 
-  -- زر مربّع (مؤشر — الفعل بمسك المفتاح)
+  -- ===== الزر المربّع (مؤشر — الفعل بمسك المفتاح) =====
+  local BS  = 118
   local bx  = X + (W - BS) * 0.5
-  local byy = sy + cardH + 30
+  local byy = sy + cardH + 16
   if rIsRewinding then
-    glowRect(bx, byy, bx + BS, byy + BS, COR, 20)
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 0.5, 0.12, 1), 20)
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS * 0.5), rgbm(1, 1, 1, 0.16), 20)
-    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.32), 20, nil, 2)
-    dwBox("REWIND", 26, bx, byy + BS * 0.5 - 20, BS, 34, DK)
-    dwBox("جارٍ الرجوع...", 14, bx, byy + BS * 0.5 + 16, BS, 18, DK)
+    glowRect(bx, byy, bx + BS, byy + BS, COR, 18)
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 0.5, 0.12, 1), 18)
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS * 0.5), rgbm(1, 1, 1, 0.16), 18)
+    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.32), 18, nil, 2)
+    dwBox("REWIND", 24, bx, byy + BS * 0.5 - 24, BS, 32, DK)
+    dwBox("جارٍ الرجوع...", 13, bx, byy + BS * 0.5 + 12, BS, 18, DK)
   else
     local base = ready and rgbm(0.16, 0.5, 0.2, 1) or rgbm(0.22, 0.23, 0.27, 1)
-    if ready then glowRect(bx, byy, bx + BS, byy + BS, CGR, 20) end
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), base, 20)
-    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS * 0.5), rgbm(1, 1, 1, 0.10), 20)
-    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.28), 20, nil, 2)
-    dwBox("امسك", 22, bx, byy + 24, BS, 26, CW)
-    dwMono(keyName(keyStore.rewindKey), 40, bx, byy + BS * 0.5 - 6, BS, 46, CW)
-    dwBox(ready and "جاهز للرجوع" or "يسجّل...", 13, bx, byy + BS - 34, BS, 18, ready and CGR or CDm)
+    if ready then glowRect(bx, byy, bx + BS, byy + BS, CGR, 18) end
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS), base, 18)
+    ui.drawRectFilled(vec2(bx, byy), vec2(bx + BS, byy + BS * 0.5), rgbm(1, 1, 1, 0.10), 18)
+    ui.drawRect(vec2(bx, byy), vec2(bx + BS, byy + BS), rgbm(1, 1, 1, 0.28), 18, nil, 2)
+    dwBox("امسك", 20, bx, byy + 18, BS, 24, CW)
+    dwMono(keyName(keyStore.rewindKey), 32, bx, byy + BS * 0.5 - 6, BS, 40, CW)
+    dwBox(ready and "جاهز للرجوع" or "يسجّل...", 12, bx, byy + BS - 28, BS, 16, ready and CGR or CDm)
   end
-  dwBox("امسك المفتاح للرجوع بالزمن · حماية 10 ثواني بعده", 12, X, byy + BS + 12, W, 16, CC)
+  dwBox("امسك المفتاح للرجوع · حماية 10 ثواني بعده", 12, X, byy + BS + 8, W, 16, CC)
 
-  -- منتقي المفتاح (يتجنّب مفتاح البوست تلقائياً)
+  -- ===== لوحة الإعدادات (نفس ستايل البوست) =====
+  local gy   = byy + BS + 30
+  local setH = math.max((Y + H - 38) - gy, 70)
+  ui.setCursor(vec2(X, gy))
+  ui.drawRectFilled(vec2(X, gy), vec2(X + W, gy + setH), rgbm(1, 1, 1, 0.028), 12)
+  ui.drawRect(vec2(X, gy), vec2(X + W, gy + setH), rgbm(1, 1, 1, 0.06), 12, nil, 1)
+  ui.childWindow("##rset", vec2(W, setH), function()
+    local ww = ui.windowWidth() - 20
+    local ly = 8
+
+    -- سرعة الرجوع
+    local nv = rewindSlider("سرعة الرجوع  (مضاعف الزمن)", 10, ly, ww, "##rspd",
+      rewindStore.speed, 1, 8, "  x%.1f")
+    if math.abs(nv - rewindStore.speed) > 0.01 then rewindStore.speed = nv end
+    ly = ly + 44
+
+    -- أزرار جاهزة للسرعة
+    local names, sel = {}, 0
+    for i, p in ipairs(REWIND_SPEED_PRESETS) do
+      names[i] = p[1]
+      if math.abs(rewindStore.speed - p[2]) < 0.05 then sel = i end
+    end
+    local ns = segToggle(10, ly, ww, 32, names, sel)
+    if ns ~= sel then rewindStore.speed = REWIND_SPEED_PRESETS[ns][2] end
+    ly = ly + 46
+
+    -- مدة التسجيل
+    nv = rewindSlider("مدة التسجيل  (كم ثانية يحفظ)", 10, ly, ww, "##rmax",
+      rewindStore.maxSec, 5, 60, "  %.0f ثانية")
+    if math.abs(nv - rewindStore.maxSec) > 0.01 then rewindStore.maxSec = nv end
+    ly = ly + 48
+
+    -- رجوع للافتراضي
+    if bigButton(10, ly, ww, 32, "رجوع للإعدادات الافتراضية", rgbm(0.30, 0.31, 0.36, 1), "##rrst") then
+      rewindStore.speed  = CFG.REWIND_SPEED * 1.0
+      rewindStore.maxSec = CFG.REWIND_MAX_SEC * 1.0
+    end
+    ly = ly + 40
+
+    dwBox("السرعة الأعلى = رجوع أسرع · المدة الأطول = ذاكرة أطول", 12, 10, ly, ww, 16, CDm)
+    ui.dummy(vec2(1, ly + 24))
+  end)
+
+  -- ===== المفتاح (يتجنّب مفتاح البوست تلقائياً) =====
   keyPicker(X, Y + H - 30, W, "مفتاح الرجوع", keyName(keyStore.rewindKey), function()
     keyStore.rewindKey = nextKey(keyStore.rewindKey, keyStore.boostKey)
   end)
