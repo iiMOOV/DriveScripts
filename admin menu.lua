@@ -98,7 +98,7 @@ end
 -------------------------------------------------
 -- 3. Radar & Alerts
 -------------------------------------------------
-local DEFAULT_ALERT_IMAGE = "https://i.imgur.com/Zu9lIUt.png"
+local DEFAULT_ALERT_IMAGE = "https://i.imgur.com/0iNg1rw.png"
 local SOUND_URL     = "http://91.218.66.157:8007/drive/alert.mp3"
 local DISPLAY_TIME  = 2.5
 local ALERT_W, ALERT_H = 460, 220
