@@ -867,7 +867,7 @@ function script.update(dt)
   prevCloseKey = ckn
 
   -- زر C يفتح/يقفل الشات (مع نفس حارس canCap عشان الكتابة ما تقفله)
-  local ckC = canCap and ui.keyboardButtonDown(ui.KeyIndex.C)
+  local ckC = canCap and ui.keyboardButtonDown(string.byte("C"))
   if ckC and not cSt.prevC then
     chatBarOpen = not chatBarOpen
     if chatBarOpen then chatBarJustOpened = true; cSt.chatBarIdle = pulseT; cSt.chatMin = false end
@@ -1231,7 +1231,10 @@ end
 
 function script.drawUI()
   local sim = ac.getSim()
-  if sim then drawChatLog(sim); drawChatBar(sim) end
+  if sim then
+    local ok, err = pcall(function() drawChatLog(sim); drawChatBar(sim) end)
+    if not ok and not cSt.errLogged then cSt.errLogged = true; ac.log("DRIVE chat draw error: " .. tostring(err)) end
+  end
   if radarTimer > 0 then drawAlertBox(radarMsg, radarImg, radarTimer, "radarAlertHUD") end
   if massTimer  > 0 then drawAlertBox(massMsg,  massImg,  massTimer,  "massAlertHUD")  end
 
