@@ -13,8 +13,8 @@ local allowedAdmins = {
     ["76561198410172040"] = true, -- v9BR
     ["76561199486830183"] = true, -- l5b6h
 }
-if not allowedAdmins[mySteamID] then return end
-local isAdmin = true
+-- السكربت يشتغل للجميع؛ اللوحة تُحجب على الأدمن لاحقاً، ومفاتيح الشدة تشتغل للكل
+local isAdmin = allowedAdmins[mySteamID] == true
 
  
 
@@ -130,6 +130,7 @@ end)
 
 local localSkipState = {}
 local radarInputMsg = ""
+local radarInputGen = 0   -- تغيير معرّف صندوق الكتابة يجبر CSP يعيد بناءه ويأخذ النص الجديد
 -- تبويبات الأدمن الإضافية
 local kickReason = ""
 local aiSplineOffset = 0.0
@@ -444,27 +445,47 @@ local function drawRadarAdmin(X, Y, W, H)
 
     dwLeftBox("📢 إرسال تنبيه جماعي", 16, X, curY, W, 24, ACC); curY = curY + 30
 
-    -- معاينة حية (DirectWrite): تعرض العربي مشبوكاً وصحيحاً أثناء الكتابة (المربع نفسه يبقى مقلوباً بسبب CSP)
+    -- صندوق الكتابة — نفس طريقة شات المنيو:
+    -- ui.inputText الحقيقي يُرسم أولاً ثم يُغطّى بمستطيل معتم، والنص يُرسم يدوياً بـ
+    -- DirectWrite بمحاذاة يمين مع التفاف، فيظهر العربي مشبوكاً وصحيحاً بدل المقلوب.
+    -- الصندوق يكبر مع طول الرسالة (لأسفل هنا، لأن المساحة تحته فاضية عكس شريط الشات).
+    -- منطقة الضغط للتركيز هي أعلى الصندوق: ارتفاع الودجت الأصلي ثابت ولا يكبر معه.
     local prevText = radarInputMsg:gsub("_", " ")
-    ui.drawRectFilled(vec2(X, curY), vec2(X + W, curY + 34), rgbm(0, 0, 0, 0.35), 8)
-    ui.drawRect(vec2(X, curY), vec2(X + W, curY + 34), rgbm(ACC.r, ACC.g, ACC.b, 0.35), 8, nil, 1)
-    if prevText:gsub("%s", "") == "" then
-        dwRightBox("… المعاينة تظهر هنا", 15, X + 10, curY, W - 20, 34, CDm)
-    else
-        dwRightBox(prevText, 17, X + 10, curY, W - 20, 34, CW)
+    local prevW = W - 96
+    local boxH = 34
+    if prevText:gsub("%s", "") ~= "" then
+        ui.pushDWriteFont(FONT)
+        local sz = ui.measureDWriteText(prevText, 17, prevW)
+        ui.popDWriteFont()
+        boxH = math.max(34, math.min(120, math.ceil(sz.y) + 14))
     end
-    curY = curY + 42
 
-    ui.setCursor(vec2(X, curY))
-    ui.pushItemWidth(W - 78)
-    radarInputMsg = ui.inputText("##alertmsg", radarInputMsg, 200, "اكتب رسالتك هنا...")
+    ui.setCursor(vec2(X + 8, curY + 3))
+    ui.pushItemWidth(W - 92)
+    local nt, changed, entered = ui.inputText("##alertmsg" .. radarInputGen, radarInputMsg, ui.InputTextFlags.RetainSelection)
+    if changed then radarInputMsg = nt end
     if ui.itemActive() or ui.itemFocused() then pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI); ui.captureKeyboard(true) end) end
     ui.popItemWidth()
-    if bigButton(X + W - 72, curY, 72, 28, "مسافة", rgbm(0.2, 0.2, 0.23, 1), "##al_spc") then radarInputMsg = radarInputMsg .. " " end
-    curY = curY + 40
+
+    ui.drawRectFilled(vec2(X, curY), vec2(X + W - 76, curY + boxH), rgbm(0.11, 0.115, 0.14, 1), 8)
+    ui.drawRect(vec2(X, curY), vec2(X + W - 76, curY + boxH), rgbm(ACC.r, ACC.g, ACC.b, 0.35), 8, nil, 1)
+    if prevText:gsub("%s", "") ~= "" then
+        ui.pushDWriteFont(FONT)
+        ui.setCursor(vec2(X + 10, curY + 5))
+        ui.dwriteTextAligned(prevText, 17, ui.Alignment.End, ui.Alignment.Start, vec2(prevW, boxH - 10), true, CW)
+        ui.popDWriteFont()
+    else
+        dwRightBox("اكتب رسالتك هنا...", 15, X + 10, curY, prevW, 34, CDm)
+    end
+
+    if bigButton(X + W - 72, curY, 72, 28, "مسافة", rgbm(0.2, 0.2, 0.23, 1), "##al_spc") then
+        radarInputMsg = radarInputMsg .. " "
+        radarInputGen = radarInputGen + 1
+    end
+    curY = curY + boxH + 8
 
     local can = radarInputMsg:gsub("%s", "") ~= ""
-    if bigButton(X, curY, W, 38, "إرسال للجميع", can and ACC or rgbm(0.2, 0.2, 0.23, 1), "##al_snd") and can then
+    if (bigButton(X, curY, W, 38, "إرسال للجميع", can and ACC or rgbm(0.2, 0.2, 0.23, 1), "##al_snd") or entered) and can then
         local fMsg = radarInputMsg:gsub("_", " ")
         myNonceCounter = myNonceCounter + 1
         local nnc = (os.time() * 1000) + myNonceCounter
@@ -473,6 +494,7 @@ local function drawRadarAdmin(X, Y, W, H)
         massMsg, massImg, massTimer = fMsg, DEFAULT_ALERT_IMAGE, DISPLAY_TIME
         playAlertSound()
         radarInputMsg = ""
+        radarInputGen = radarInputGen + 1
     end
 end
 
@@ -737,7 +759,7 @@ function script.update(dt)
   if massTimer  > 0 then massTimer  = math.max(0, massTimer - dt) end
   if soundHold  > 0 then soundHold  = math.max(0, soundHold - dt) end
 
-  if isAdmin and canCap then
+  if canCap then
       for keyName, keyIndex in pairs(SHADDA_KEYS) do
           local isDown = ui.keyboardButtonDown(keyIndex)
           if isDown and not shaddaLastStates[keyName] then
@@ -787,6 +809,7 @@ function script.drawUI()
 end
 
 ac.log("DRIVE Admin Master UI loaded")
+if isAdmin then
 ui.registerOnlineExtra(
     WINDOW_ICON,
     WINDOW_TITLE,
@@ -795,3 +818,4 @@ ui.registerOnlineExtra(
     nil,
     ui.OnlineExtraFlags.Tool
 )
+end
