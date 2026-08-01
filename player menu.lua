@@ -1649,8 +1649,8 @@ local DriveChat = (function()
   local ALLOW_TP = true               -- كلك يمين على اسم = انتقال للاعب (خلّه false لو ما تبيه للكل)
 
   -- ===== ألوان هوية DRIVE =====
-  local ACC = rgbm(1.0, 0.5, 0.0, 1.0)   -- برتقالي
-  local CY  = rgbm(1.0, 0.7, 0.0, 1.0)   -- أصفر (السيرفر/النظام)
+  local ACC = rgbm(1.00, 0.45, 0.06, 1)   -- برتقالي هوية درايف (COR)
+  local CY  = rgbm(1.00, 0.84, 0.20, 1)   -- أصفر هوية درايف
   local CW  = rgbm.colors.white
   local CDm = rgbm(0.66, 0.67, 0.70, 1)
   local DK  = rgbm(0.04, 0.03, 0.02, 1)
@@ -1776,6 +1776,7 @@ local DriveChat = (function()
     -- الفلتر العام — لازم آخر شي
     if msg:find("^%$AS1980_") then return true end
     if msg:find("not an administrator") or msg:find("Unrecognized command") then return true end
+    if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
     local srv = not sender or sender < 0
     local nm = srv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
     chatLog[#chatLog + 1] = { name = nm, text = translateServer(msg), srv = srv, rawName = (not srv) and nm or nil, t = pulseT }
