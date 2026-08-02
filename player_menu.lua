@@ -290,7 +290,7 @@ local function drawTeleport(X, Y, W, H)
     for i = 1, ac.getSim().carsCount - 1 do
       local c = ac.getCar(i)
       local n = ac.getDriverName(i)
-      if c and c.isConnected and not c.isAIControlled and n ~= "1980" and not string.find(n or "", "Traffic") then
+      if c and c.isConnected and not c.isAIControlled and not string.find(n or "", "Traffic") then
         local ry = k * 46 + 4
         ui.setCursor(vec2(4, ry))
         local cl  = ui.invisibleButton("##pl" .. i, vec2(ww - 14, 42))
@@ -1777,24 +1777,6 @@ local DriveChat = (function()
 
   ac.onChatMessage(function(message, sender)
     local msg = tostring(message)
-    if msg:match("Drive_CODE:([%w]+)") then return true end
-    if msg:find("Drive_LINKED") then return true end
-    if msg:find("Drive_GETCODE") then return true end
-    if msg:find("Drive_DRIFT:") then return true end
-    if msg:find("^Drive_STATS:") then return true end
-    -- رسالة ملوّنة برتبة: "Drive_MSG:<color>|<emoji>|<tag>|<name>|<message>"
-    local mcol, memo, mtag, mnm, mtxt = msg:match("^Drive_MSG:([^|]*)|([^|]*)|([^|]*)|([^|]*)|(.*)$")
-    if mnm then
-      if mtxt:find("^Drive_") then return true end
-      local rr, gg, bb = mcol:match("#?(%x%x)(%x%x)(%x%x)")
-      local color = rr and rgbm(tonumber(rr, 16) / 255, tonumber(gg, 16) / 255, tonumber(bb, 16) / 255, 1) or nil
-      local disp = mnm .. (mtag ~= "" and ("  " .. mtag) or "") .. (memo ~= "" and (" " .. memo) or "")
-      chatLog[#chatLog + 1] = { name = disp, text = mtxt, srv = false, color = color, rawName = mnm, t = pulseT }
-      while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
-      return true
-    end
-    -- الفلتر العام — لازم آخر شي
-    if msg:find("^Drive_") then return true end
     if msg:find("not an administrator") or msg:find("Unrecognized command") then return true end
     if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
     -- كتم ماركرات بروتوكول بلقنات DRIVE (ترافيك/شدّة/رادار) اللي تنتشر بالشات
@@ -1820,8 +1802,8 @@ local DriveChat = (function()
     return true
   end)
 
-  chatLog[#chatLog + 1] = { name = "DRIVE", text = "لقفل الشات C", srv = true, t = 0 }
-  for _, rx in ipairs({ "onnected", "joined the server", "left the server", "has left", "AS1980_", "Drive" }) do
+  chatLog[#chatLog + 1] = { name = "DRIVE", text = "الشات جاهز · C للعبارات والإيموجي · Enter للإرسال", srv = true, t = 0 }
+  for _, rx in ipairs({ "onnected", "joined the server", "left the server", "has left" }) do
     pcall(function() ac.blockSystemMessages(rx) end)
   end
 
@@ -1897,7 +1879,7 @@ local function drawChatLog(sim)
   local hs, total = {}, 8
   for i, m in ipairs(recent) do hs[i] = msgRowH(m, w); total = total + hs[i] end
   local cy0 = sim.windowHeight - total - 200
-  ui.transparentWindow("chatlog1980", vec2(16, cy0), vec2(w, total), function()
+  ui.transparentWindow("driveChatLog", vec2(16, cy0), vec2(w, total), function()
     local lp = ui.mouseLocalPos()
     local over = lp.x >= -6 and lp.x <= (w + 6) and lp.y >= -6 and lp.y <= (total + 6)
     local target = (over or (pulseT - chatLog[#chatLog].t < 4)) and 1 or 0
@@ -1921,7 +1903,7 @@ local function drawChatBar(sim)
     local hy = (cSt.chatBotY or (sim.windowHeight - 120)) - hh
     hx = math.max(0, math.min(sim.windowWidth - hw, hx))
     hy = math.max(0, math.min(sim.windowHeight - hh, hy))
-    ui.transparentWindow("chatmin1980", vec2(hx, hy), vec2(hw, hh), true, true, function()
+    ui.transparentWindow("driveChatMin", vec2(hx, hy), vec2(hw, hh), true, true, function()
       local hov = ui.windowHovered()
       ui.drawRectFilled(vec2(0, 0), vec2(hw, hh), rgbm(0.07, 0.075, 0.1, hov and 0.95 or 0.55), 9)
       ui.drawRect(vec2(0.5, 0.5), vec2(hw - 0.5, hh - 0.5), rgbm(ACC.r, ACC.g, ACC.b, hov and 0.9 or 0.4), 9, nil, 1.2)
@@ -1952,7 +1934,7 @@ local function drawChatBar(sim)
     local ph2 = (cSt.panel == "emoji" and 156) or (cSt.panel == "phrases" and (prows * 46 + 20)) or 96
     local py2 = y0 - ph2 - 8
     if py2 < 8 then py2 = y0 + bh + 8 end
-    ui.transparentWindow("chatpanel1980", vec2(x0, py2), vec2(bw, ph2), true, true, function()
+    ui.transparentWindow("driveChatPanel", vec2(x0, py2), vec2(bw, ph2), true, true, function()
       ui.drawRectFilled(vec2(0, 0), vec2(bw, ph2), rgbm(0.07, 0.075, 0.1, math.max(0.9, cStor.dc_opacity)), 14)
       ui.drawRect(vec2(0.5, 0.5), vec2(bw - 0.5, ph2 - 0.5), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 14, nil, 1.4)
 
@@ -2030,7 +2012,7 @@ local function drawChatBar(sim)
     end)
   end
 
-  ui.transparentWindow("chatbar1980", vec2(x0, y0), vec2(bw, bh), true, true, function()
+  ui.transparentWindow("driveChatBar", vec2(x0, y0), vec2(bw, bh), true, true, function()
     ui.drawRectFilled(vec2(0, 0), vec2(bw, bh), rgbm(0.07, 0.075, 0.1, cStor.dc_opacity), 14)
     ui.drawRect(vec2(0.5, 0.5), vec2(bw - 0.5, bh - 0.5), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 14, nil, 1.4)
     -- \u0647\u064a\u062f\u0631: \u0639\u0646\u0648\u0627\u0646 + \u0634\u0641\u0627\u0641\u064a\u0629 + \u0625\u063a\u0644\u0627\u0642
@@ -2081,12 +2063,9 @@ local function drawChatBar(sim)
     ui.setNextItemWidth(bw - 134)
     local nt, changed, entered = ui.inputText("##chatin" .. chatInputGen, chatInput, ui.InputTextFlags.RetainSelection)
     if changed then chatInput = nt end
-    -- إشارة إدخال عامة: توقف قراءة المفاتيح في كل السكربتات (شدّات الأدمن T/U/O/K/F/B + الرجوع Y)
-    -- طول ما مربع الكتابة مفعّل — عشان ما تكرش الفيزياء وأنت تكتب.
-    if ui.itemActive() or ui.itemFocused() then
-      pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI) end)
-      pcall(function() ui.captureKeyboard(true) end)
-    end
+    -- سجّل تركيز مربع الكتابة (تُدار حالة الإدخال من update بأمان مع إرجاع)
+    cSt.inputFocused = ui.itemActive() or ui.itemFocused()
+    if cSt.inputFocused then pcall(function() ui.captureKeyboard(true) end) end
     ui.drawRectFilled(vec2(10, top), vec2(bw - 116, iy + 38), rgbm(0.11, 0.115, 0.14, 1), 9)
     ui.drawRect(vec2(10, top), vec2(bw - 116, iy + 38), rgbm(1, 1, 1, 0.1), 9, nil, 1)
     if chatInput ~= "" then
@@ -2153,7 +2132,19 @@ end
         if chatBarOpen then chatBarJustOpened = true; cSt.chatBarIdle = pulseT; cSt.chatMin = false end
       end
       cSt.prevKey = dn
-      chatTyping = chatBarOpen   -- أوقف مفاتيح المنيو طول ما الشات مفتوح
+      chatTyping = chatBarOpen   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
+      -- حالة إدخال عامة وأنت تكتب (توقف شدّات الأدمن في السكربت الثاني) — مع حفظ وإرجاع آمن عشان ما يعلق الإدخال
+      if type(ac.setCurrentInputMethod) == "function" and type(ac.getCurrentInputMethod) == "function" then
+        local wantUI = chatBarOpen and not cSt.chatMin and cSt.inputFocused
+        if wantUI and not cSt.imSet then
+          cSt.imPrev = ac.getCurrentInputMethod()
+          cSt.imSet = true
+          pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI) end)
+        elseif (not wantUI) and cSt.imSet then
+          cSt.imSet = false
+          pcall(function() ac.setCurrentInputMethod(cSt.imPrev) end)
+        end
+      end
     end,
     draw = function(sim)
       sim = sim or ac.getSim()
