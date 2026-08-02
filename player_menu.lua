@@ -207,6 +207,12 @@ local function isTyping()
   return false
 end
 
+-- تحقق إن المتجه صالح (مو NaN ولا لانهاية ولا قيم مجنونة) — يمنع كراش الفيزياء
+local function vfinite(v)
+  return v ~= nil and v.x == v.x and v.y == v.y and v.z == v.z
+    and v.x < 1e9 and v.x > -1e9 and v.y < 1e9 and v.y > -1e9 and v.z < 1e9 and v.z > -1e9
+end
+
 function Core.ghostStart()
   Core.ghostT = CFG.GHOST_TIME
   Core.ghostOn = true
@@ -1002,15 +1008,19 @@ local function rewindUpdate(dt)
     local popN = math.floor((dt * rewindStore.speed) / CFG.REWIND_INTERVAL)
     if popN < 1 then popN = 1 end
     for _ = 1, popN do if #rHistory > 0 then rLastState = table.remove(rHistory) end end
-    if rLastState then
-      physics.setCarVelocity(0, vec3(0, 0, 0))
-      physics.setCarPosition(0, rLastState.pos, -rLastState.look, rLastState.up)
+    -- تحصين: لا نطعم الفيزياء إحداثيات/اتجاه غير صالح (يمنع كراش ReplayManager)
+    if rLastState and vfinite(rLastState.pos) and vfinite(rLastState.look) and vfinite(rLastState.up)
+       and rLastState.look:length() > 0.05 and rLastState.up:length() > 0.05 then
+      pcall(function()
+        physics.setCarVelocity(0, vec3(0, 0, 0))
+        physics.setCarPosition(0, rLastState.pos, -rLastState.look, rLastState.up)
+      end)
     end
   else
     rIsRewinding = false
     if rWasRewinding then
       rWasRewinding = false
-      if rLastState then physics.setCarVelocity(0, rLastState.vel) end
+      if rLastState and vfinite(rLastState.vel) then pcall(function() physics.setCarVelocity(0, rLastState.vel) end) end
       Core.ghostStart()
     end
     rRecordTimer = rRecordTimer + dt
@@ -1772,7 +1782,7 @@ local DriveChat = (function()
     if msg:find("Drive_GETCODE") then return true end
     if msg:find("Drive_DRIFT:") then return true end
     if msg:find("^Drive_STATS:") then return true end
-    -- رسالة ملوّنة برتبة: "$AS1980_MSG:<color>|<emoji>|<tag>|<name>|<message>"
+    -- رسالة ملوّنة برتبة: "Drive_MSG:<color>|<emoji>|<tag>|<name>|<message>"
     local mcol, memo, mtag, mnm, mtxt = msg:match("^Drive_MSG:([^|]*)|([^|]*)|([^|]*)|([^|]*)|(.*)$")
     if mnm then
       if mtxt:find("^Drive_") then return true end
@@ -1810,7 +1820,7 @@ local DriveChat = (function()
     return true
   end)
 
-  chatLog[#chatLog + 1] = { name = "DRIVE", text = "الشات جاهز · C للعبارات والإيموجي · Enter للإرسال", srv = true, t = 0 }
+  chatLog[#chatLog + 1] = { name = "DRIVE", text = "لقفل الشات C", srv = true, t = 0 }
   for _, rx in ipairs({ "onnected", "joined the server", "left the server", "has left", "AS1980_", "Drive" }) do
     pcall(function() ac.blockSystemMessages(rx) end)
   end
@@ -1915,7 +1925,7 @@ local function drawChatBar(sim)
       local hov = ui.windowHovered()
       ui.drawRectFilled(vec2(0, 0), vec2(hw, hh), rgbm(0.07, 0.075, 0.1, hov and 0.95 or 0.55), 9)
       ui.drawRect(vec2(0.5, 0.5), vec2(hw - 0.5, hh - 0.5), rgbm(ACC.r, ACC.g, ACC.b, hov and 0.9 or 0.4), 9, nil, 1.2)
-      dwBox("💬 الشات", 13, 0, 4, hw, 18, hov and CW or CDm)
+      dwBox("\U0001F4AC \u0627\u0644\u0634\u0627\u062a", 13, 0, 4, hw, 18, hov and CW or CDm)
       if hov then cSt.chatMin = false; cSt.chatBarIdle = pulseT end
     end)
     return
@@ -1927,34 +1937,113 @@ local function drawChatBar(sim)
   local tabsH = 30
   local pcols = 4
   local prows = math.ceil(#QUICK_PHRASES / pcols)
-  local panelH = 0
-  if cSt.panel == "emoji" then panelH = 152
-  elseif cSt.panel == "phrases" then panelH = prows * 46 + 6
-  elseif cSt.panel == "stickers" then panelH = 84 end
   local tabsY = topY + histH + 8
-  local panelY = tabsY + tabsH + 6
-  local iy = panelY + panelH + (panelH > 0 and 8 or 0)
+  local iy = tabsY + tabsH + 8
   local bh = iy + 46 + 8
 
   local x0 = (sim.windowWidth - bw) * 0.5 + cStor.dc_ofsX
   local y0 = sim.windowHeight - bh - 120 + cStor.dc_ofsY
   x0 = math.max(-bw + 80, math.min(sim.windowWidth - 80, x0))
-  y0 = math.max(0, math.min(sim.windowHeight - 60, y0))
+  y0 = math.max(60, math.min(sim.windowHeight - 60, y0))
   cSt.chatMidX = x0 + bw * 0.5; cSt.chatBotY = y0 + bh
+
+  -- ===== \u0635\u0646\u062f\u0648\u0642 \u062e\u0627\u0631\u062c\u064a \u0641\u0648\u0642 \u0627\u0644\u0634\u0627\u062a \u0644\u0644\u0648\u062d\u0629 \u0627\u0644\u0645\u0641\u062a\u0648\u062d\u0629 =====
+  if cSt.panel then
+    local ph2 = (cSt.panel == "emoji" and 156) or (cSt.panel == "phrases" and (prows * 46 + 20)) or 96
+    local py2 = y0 - ph2 - 8
+    if py2 < 8 then py2 = y0 + bh + 8 end
+    ui.transparentWindow("chatpanel1980", vec2(x0, py2), vec2(bw, ph2), true, true, function()
+      ui.drawRectFilled(vec2(0, 0), vec2(bw, ph2), rgbm(0.07, 0.075, 0.1, math.max(0.9, cStor.dc_opacity)), 14)
+      ui.drawRect(vec2(0.5, 0.5), vec2(bw - 0.5, ph2 - 0.5), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 14, nil, 1.4)
+
+      if cSt.panel == "emoji" then
+        local recs = { cStor.dc_rec1, cStor.dc_rec2, cStor.dc_rec3 }
+        for i = 1, 3 do
+          local rw = 54
+          local rx = 10 + (i - 1) * (rw + 6)
+          ui.setCursor(vec2(rx, 10))
+          local rc = ui.invisibleButton("##rec" .. i, vec2(rw, 36))
+          ui.drawRectFilled(vec2(rx, 10), vec2(rx + rw, 46), ui.itemHovered() and rgbm(ACC.r, ACC.g, ACC.b, 0.6) or rgbm(1, 1, 1, 0.09), 8)
+          dwBox(recs[i] ~= "" and recs[i] or "\u00b7", 21, rx, 10, rw, 36, CW)
+          if rc and recs[i] ~= "" then useEmoji(recs[i]) end
+        end
+        dwRightBox("\u0627\u0644\u0623\u0643\u062b\u0631 \u0627\u0633\u062a\u062e\u062f\u0627\u0645\u0627\u064b", 11, 200, 21, bw - 212, 16, CDm)
+        ui.drawRectFilled(vec2(10, 52), vec2(bw - 10, 148), rgbm(0, 0, 0, 0.22), 8)
+        ui.setCursor(vec2(10, 52))
+        ui.childWindow("##allemoji", vec2(bw - 20, 96), function()
+          local cw = ui.windowWidth()
+          local ecols = 13
+          local gw = (cw - 8 - (ecols - 1) * 4) / ecols
+          for i, em in ipairs(EMOJIS) do
+            local ex = 4 + ((i - 1) % ecols) * (gw + 4)
+            local ey = 4 + math.floor((i - 1) / ecols) * (gw + 4)
+            ui.setCursor(vec2(ex, ey))
+            local ec = ui.invisibleButton("##ae" .. i, vec2(gw, gw))
+            if ui.itemHovered() then ui.drawRectFilled(vec2(ex, ey), vec2(ex + gw, ey + gw), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 6) end
+            dwBox(em, 19, ex, ey, gw, gw, CW)
+            if ec then useEmoji(em) end
+          end
+          ui.setCursor(vec2(0, math.ceil(#EMOJIS / ecols) * (gw + 4) + 6)); ui.dummy(vec2(1, 1))
+        end)
+
+      elseif cSt.panel == "phrases" then
+        local qw = (bw - 20 - (pcols - 1) * 8) / pcols
+        for i, ph in ipairs(QUICK_PHRASES) do
+          local px = 10 + ((i - 1) % pcols) * (qw + 8)
+          local py = 10 + math.floor((i - 1) / pcols) * 46
+          ui.setCursor(vec2(px, py))
+          local cl = ui.invisibleButton("##qp" .. i, vec2(qw, 40))
+          local hov = ui.itemHovered()
+          ui.drawRectFilled(vec2(px, py), vec2(px + qw, py + 40), hov and rgbm(ACC.r, ACC.g, ACC.b, 0.9) or rgbm(1, 1, 1, 0.06), 9)
+          dwBox(ph, 15, px, py, qw, 40, hov and DK or CW)
+          if cl then
+            chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "\u0623\u0646\u062a", text = ph, srv = false, mine = true, t = pulseT }
+            while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+            pcall(function() ac.sendChatMessage(ph) end)
+          end
+        end
+
+      elseif cSt.panel == "stickers" then
+        ui.drawRectFilled(vec2(10, 10), vec2(bw - 10, 86), rgbm(0, 0, 0, 0.22), 8)
+        ui.setCursor(vec2(10, 10))
+        ui.childWindow("##stickerstrip", vec2(bw - 20, 76), function()
+          local ssz = 62
+          for i, st in ipairs(STICKERS) do
+            local sx = 6 + (i - 1) * (ssz + 10)
+            ui.setCursor(vec2(sx, 6))
+            local sc = ui.invisibleButton("##st" .. i, vec2(ssz, ssz))
+            if ui.itemHovered() then ui.drawRectFilled(vec2(sx - 3, 3), vec2(sx + ssz + 3, ssz + 9), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 8) end
+            ui.setCursor(vec2(sx, 6))
+            pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
+            if sc then
+              chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "\u0623\u0646\u062a", sticker = st.url, srv = false, mine = true, t = pulseT }
+              while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+              pcall(function() ac.sendChatMessage("$STICK:" .. i) end)
+            end
+          end
+          ui.setCursor(vec2(6 + #STICKERS * 72, 0)); ui.dummy(vec2(1, 1))
+        end)
+      end
+
+      local plp = ui.mouseLocalPos()
+      if plp.x >= -8 and plp.x <= bw + 8 and plp.y >= -8 and plp.y <= ph2 + 8 then cSt.chatBarIdle = pulseT end
+    end)
+  end
 
   ui.transparentWindow("chatbar1980", vec2(x0, y0), vec2(bw, bh), true, true, function()
     ui.drawRectFilled(vec2(0, 0), vec2(bw, bh), rgbm(0.07, 0.075, 0.1, cStor.dc_opacity), 14)
     ui.drawRect(vec2(0.5, 0.5), vec2(bw - 0.5, bh - 0.5), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 14, nil, 1.4)
-    ui.drawRectFilled(vec2(0, 0), vec2(bw, 4), rgbm(ACC.r, ACC.g, ACC.b, 0.9), 14)
-    -- هيدر: عنوان + شفافية + إغلاق
-    dwBox("DRIVE · الشات", 14, 0, 9, bw, 18, CY)
-    dwBox("شفافية", 11, bw - 214, 9, 46, 16, CDm)
-    ui.setCursor(vec2(bw - 164, 8))
+    -- \u0647\u064a\u062f\u0631: \u0639\u0646\u0648\u0627\u0646 + \u0634\u0641\u0627\u0641\u064a\u0629 + \u0625\u063a\u0644\u0627\u0642
+    dwBox("DRIVE \u00b7 \u0627\u0644\u0634\u0627\u062a", 14, 0, 8, bw, 18, CY)
+    dwBox("\u0634\u0641\u0627\u0641\u064a\u0629", 11, bw - 214, 8, 46, 16, CDm)
+    ui.setCursor(vec2(bw - 164, 7))
     ui.setNextItemWidth(96)
     cStor.dc_opacity = ui.slider("##chatopac", cStor.dc_opacity, 0.35, 1.0, "%.2f")
-    if bigButton(bw - 52, 6, 42, 22, "✕", rgbm(0.62, 0.28, 0.30, 1), "##chatclose") then chatBarOpen = false; return end
+    if bigButton(bw - 52, 5, 42, 22, "\u2715", rgbm(0.62, 0.28, 0.30, 1), "##chatclose") then chatBarOpen = false; return end
+    -- \u062e\u0637 \u0647\u0648\u064a\u0629 \u0631\u0641\u064a\u0639 \u062a\u062d\u062a \u0627\u0644\u0647\u064a\u062f\u0631 (\u0628\u062f\u0644 \u0627\u0644\u0634\u0631\u064a\u0637 \u0627\u0644\u0645\u0643\u0633\u0648\u0631)
+    ui.drawRectFilled(vec2(12, 30), vec2(bw - 12, 32), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 1)
 
-    -- السجل
+    -- \u0627\u0644\u0633\u062c\u0644
     ui.drawRectFilled(vec2(10, topY), vec2(bw - 10, topY + histH), rgbm(0, 0, 0, 0.28), 10)
     ui.setCursor(vec2(10, topY))
     ui.childWindow("##chathist", vec2(bw - 20, histH), function()
@@ -1968,7 +2057,7 @@ local function drawChatBar(sim)
       chatBarLastCount = #chatLog
     end)
 
-    -- شريط التبويبات: إيموجي / اختصارات / ستيكرز (اضغط يفتح، اضغط مرة ثانية يقفل)
+    -- \u0634\u0631\u064a\u0637 \u0627\u0644\u062a\u0628\u0648\u064a\u0628\u0627\u062a (\u064a\u0641\u062a\u062d \u0635\u0646\u062f\u0648\u0642 \u062e\u0627\u0631\u062c\u064a)
     local function tab(x, w, label, id, key)
       local on = cSt.panel == key
       if bigButton(x, tabsY, w, tabsH - 4, label, on and ACC or rgbm(0.16, 0.17, 0.21, 1), id) then
@@ -1976,80 +2065,11 @@ local function drawChatBar(sim)
       end
     end
     local tw = (bw - 20 - 16) / 3
-    tab(10, tw, "😀 إيموجي", "##tab_em", "emoji")
-    tab(10 + tw + 8, tw, "💬 اختصارات", "##tab_ph", "phrases")
-    tab(10 + (tw + 8) * 2, tw, "🖼 ستيكرز", "##tab_st", "stickers")
+    tab(10, tw, "\U0001F600 \u0625\u064a\u0645\u0648\u062c\u064a", "##tab_em", "emoji")
+    tab(10 + tw + 8, tw, "\U0001F4AC \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a", "##tab_ph", "phrases")
+    tab(10 + (tw + 8) * 2, tw, "\U0001F5BC \u0633\u062a\u064a\u0643\u0631\u0632", "##tab_st", "stickers")
 
-    -- اللوحة المفتوحة
-    if cSt.panel == "emoji" then
-      local recs = { cStor.dc_rec1, cStor.dc_rec2, cStor.dc_rec3 }
-      for i = 1, 3 do
-        local rw = 54
-        local rx = 10 + (i - 1) * (rw + 6)
-        ui.setCursor(vec2(rx, panelY))
-        local rc = ui.invisibleButton("##rec" .. i, vec2(rw, 36))
-        ui.drawRectFilled(vec2(rx, panelY), vec2(rx + rw, panelY + 36), ui.itemHovered() and rgbm(ACC.r, ACC.g, ACC.b, 0.6) or rgbm(1, 1, 1, 0.09), 8)
-        dwBox(recs[i] ~= "" and recs[i] or "·", 21, rx, panelY, rw, 36, CW)
-        if rc and recs[i] ~= "" then useEmoji(recs[i]) end
-      end
-      dwRightBox("الأكثر استخداماً", 11, 200, panelY + 11, bw - 212, 16, CDm)
-      local allY = panelY + 42
-      ui.drawRectFilled(vec2(10, allY), vec2(bw - 10, allY + 104), rgbm(0, 0, 0, 0.22), 8)
-      ui.setCursor(vec2(10, allY))
-      ui.childWindow("##allemoji", vec2(bw - 20, 104), function()
-        local cw = ui.windowWidth()
-        local ecols = 13
-        local gw = (cw - 8 - (ecols - 1) * 4) / ecols
-        for i, em in ipairs(EMOJIS) do
-          local ex = 4 + ((i - 1) % ecols) * (gw + 4)
-          local ey = 4 + math.floor((i - 1) / ecols) * (gw + 4)
-          ui.setCursor(vec2(ex, ey))
-          local ec = ui.invisibleButton("##ae" .. i, vec2(gw, gw))
-          if ui.itemHovered() then ui.drawRectFilled(vec2(ex, ey), vec2(ex + gw, ey + gw), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 6) end
-          dwBox(em, 19, ex, ey, gw, gw, CW)
-          if ec then useEmoji(em) end
-        end
-        ui.setCursor(vec2(0, math.ceil(#EMOJIS / ecols) * (gw + 4) + 6)); ui.dummy(vec2(1, 1))
-      end)
-    elseif cSt.panel == "phrases" then
-      local qw = (bw - 20 - (pcols - 1) * 8) / pcols
-      for i, ph in ipairs(QUICK_PHRASES) do
-        local px = 10 + ((i - 1) % pcols) * (qw + 8)
-        local py = panelY + math.floor((i - 1) / pcols) * 46
-        ui.setCursor(vec2(px, py))
-        local cl = ui.invisibleButton("##qp" .. i, vec2(qw, 40))
-        local hov = ui.itemHovered()
-        ui.drawRectFilled(vec2(px, py), vec2(px + qw, py + 40), hov and rgbm(ACC.r, ACC.g, ACC.b, 0.9) or rgbm(1, 1, 1, 0.06), 9)
-        dwBox(ph, 15, px, py, qw, 40, hov and DK or CW)
-        if cl then
-          chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = ph, srv = false, mine = true, t = pulseT }
-          while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
-          pcall(function() ac.sendChatMessage(ph) end)
-        end
-      end
-    elseif cSt.panel == "stickers" then
-      ui.drawRectFilled(vec2(10, panelY), vec2(bw - 10, panelY + 78), rgbm(0, 0, 0, 0.22), 8)
-      ui.setCursor(vec2(10, panelY))
-      ui.childWindow("##stickerstrip", vec2(bw - 20, 78), function()
-        local ssz = 62
-        for i, st in ipairs(STICKERS) do
-          local sx = 6 + (i - 1) * (ssz + 10)
-          ui.setCursor(vec2(sx, 6))
-          local sc = ui.invisibleButton("##st" .. i, vec2(ssz, ssz))
-          if ui.itemHovered() then ui.drawRectFilled(vec2(sx - 3, 3), vec2(sx + ssz + 3, ssz + 9), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 8) end
-          ui.setCursor(vec2(sx, 6))
-          pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
-          if sc then
-            chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, t = pulseT }
-            while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
-            pcall(function() ac.sendChatMessage("$STICK:" .. i) end)
-          end
-        end
-        ui.setCursor(vec2(6 + #STICKERS * 72, 0)); ui.dummy(vec2(1, 1))
-      end)
-    end
-
-    -- مربع الكتابة
+    -- \u0645\u0631\u0628\u0639 \u0627\u0644\u0643\u062a\u0627\u0628\u0629
     local prevW = bw - 140
     local th = 38
     if chatInput ~= "" then
@@ -2061,23 +2081,29 @@ local function drawChatBar(sim)
     ui.setNextItemWidth(bw - 134)
     local nt, changed, entered = ui.inputText("##chatin" .. chatInputGen, chatInput, ui.InputTextFlags.RetainSelection)
     if changed then chatInput = nt end
+    -- إشارة إدخال عامة: توقف قراءة المفاتيح في كل السكربتات (شدّات الأدمن T/U/O/K/F/B + الرجوع Y)
+    -- طول ما مربع الكتابة مفعّل — عشان ما تكرش الفيزياء وأنت تكتب.
+    if ui.itemActive() or ui.itemFocused() then
+      pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI) end)
+      pcall(function() ui.captureKeyboard(true) end)
+    end
     ui.drawRectFilled(vec2(10, top), vec2(bw - 116, iy + 38), rgbm(0.11, 0.115, 0.14, 1), 9)
     ui.drawRect(vec2(10, top), vec2(bw - 116, iy + 38), rgbm(1, 1, 1, 0.1), 9, nil, 1)
     if chatInput ~= "" then
       ui.setCursor(vec2(18, top + 4))
       ui.dwriteTextAligned(chatInput, 16, ui.Alignment.End, ui.Alignment.Start, vec2(prevW, th - 8), true, CW)
     else
-      dwRightBox("اكتب رسالتك هنا...", 13, 18, iy, bw - 140, 38, CDm)
+      dwRightBox("\u0627\u0643\u062a\u0628 \u0631\u0633\u0627\u0644\u062a\u0643 \u0647\u0646\u0627...", 13, 18, iy, bw - 140, 38, CDm)
     end
-    if bigButton(bw - 108, iy, 98, 38, "إرسال", chatInput ~= "" and ACC or rgbm(0.3, 0.3, 0.36, 1), "##chatsend") or (entered and chatInput ~= "") then
+    if bigButton(bw - 108, iy, 98, 38, "\u0625\u0631\u0633\u0627\u0644", chatInput ~= "" and ACC or rgbm(0.3, 0.3, 0.36, 1), "##chatsend") or (entered and chatInput ~= "") then
       if chatInput ~= "" then
-        chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = chatInput, srv = false, mine = true, t = pulseT }
+        chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "\u0623\u0646\u062a", text = chatInput, srv = false, mine = true, t = pulseT }
         while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
         pcall(function() ac.sendChatMessage(chatInput) end); chatInput = ""; chatInputGen = chatInputGen + 1
       end
     end
 
-    -- سحب النافذة
+    -- \u0633\u062d\u0628 \u0627\u0644\u0646\u0627\u0641\u0630\u0629
     if ui.windowHovered() and ui.mouseDown(ui.MouseButton.Left) and not ui.anyItemActive() and not chatDragging then
       chatDragging = true; chatDragStart = ui.mousePos(); chatOfsStart = vec2(cStor.dc_ofsX, cStor.dc_ofsY)
     end
@@ -2088,7 +2114,7 @@ local function drawChatBar(sim)
         cStor.dc_ofsY = chatOfsStart.y + (mp.y - chatDragStart.y)
       else chatDragging = false end
     end
-    -- مقبض التحجيم
+    -- \u0645\u0642\u0628\u0636 \u0627\u0644\u062a\u062d\u062c\u064a\u0645
     local gs = 18
     ui.setCursor(vec2(4, bh - gs - 4))
     ui.invisibleButton("##chatgrip", vec2(gs, gs))
@@ -2107,7 +2133,6 @@ local function drawChatBar(sim)
       else cSt.chatSizing = false end
     end
 
-    -- إبقاء النافذة (ما تصغّر وأنت فاتح لوحة أو تكتب)
     local lp = ui.mouseLocalPos()
     local overBar = lp.x >= -14 and lp.x <= (bw + 14) and lp.y >= -14 and lp.y <= (bh + 14)
     if overBar or chatInput ~= "" or chatDragging or cSt.panel then cSt.chatBarIdle = pulseT end
