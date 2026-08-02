@@ -1648,14 +1648,14 @@ local menuPrevKey = false
 --
 --  طريقة التركيب (3 أسطر فقط):
 --    1) الصق هذا البلوك كاملاً في أعلى سكربتك (قبل script.update / script.drawUI).
---    2) داخل function script.update(dt)  ضف:   DriveChat.update(dt)
+--    2) داخل function script.update(dt)  ضف:   pcall(function() DriveChat.update(dt) end)
 --    3) داخل function script.drawUI()      ضف:   DriveChat.draw()
 --
 --  ❗ مهم: إذا السكربت المضيف عنده شات قديم (ac.onChatMessage خاص فيه)،
 --     احذفه أولاً — وإلا كل رسالة تنرسم مرتين.
 --  البلوك مغلّف بدالة واحدة، فما يضيف إلا local واحد (DriveChat) — آمن لحد الـ200 local.
 -- ============================================================================
-local DriveChat = (function()
+local __dcOk, DriveChat = pcall(function()
   -- ===== إعدادات سريعة =====
   local KEY      = string.byte("C")   -- زر فتح/قفل الشات
   local ALLOW_TP = false              -- معطل (كان يكرش أحياناً وقت الانتقال للاعب من الشات)
@@ -2063,9 +2063,6 @@ local function drawChatBar(sim)
     ui.setNextItemWidth(bw - 134)
     local nt, changed, entered = ui.inputText("##chatin" .. chatInputGen, chatInput, ui.InputTextFlags.RetainSelection)
     if changed then chatInput = nt end
-    -- سجّل تركيز مربع الكتابة (تُدار حالة الإدخال من update بأمان مع إرجاع)
-    cSt.inputFocused = ui.itemActive() or ui.itemFocused()
-    if cSt.inputFocused then pcall(function() ui.captureKeyboard(true) end) end
     ui.drawRectFilled(vec2(10, top), vec2(bw - 116, iy + 38), rgbm(0.11, 0.115, 0.14, 1), 9)
     ui.drawRect(vec2(10, top), vec2(bw - 116, iy + 38), rgbm(1, 1, 1, 0.1), 9, nil, 1)
     if chatInput ~= "" then
@@ -2133,18 +2130,6 @@ end
       end
       cSt.prevKey = dn
       chatTyping = chatBarOpen   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
-      -- حالة إدخال عامة وأنت تكتب (توقف شدّات الأدمن في السكربت الثاني) — مع حفظ وإرجاع آمن عشان ما يعلق الإدخال
-      if type(ac.setCurrentInputMethod) == "function" and type(ac.getCurrentInputMethod) == "function" then
-        local wantUI = chatBarOpen and not cSt.chatMin and cSt.inputFocused
-        if wantUI and not cSt.imSet then
-          cSt.imPrev = ac.getCurrentInputMethod()
-          cSt.imSet = true
-          pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI) end)
-        elseif (not wantUI) and cSt.imSet then
-          cSt.imSet = false
-          pcall(function() ac.setCurrentInputMethod(cSt.imPrev) end)
-        end
-      end
     end,
     draw = function(sim)
       sim = sim or ac.getSim()
@@ -2163,7 +2148,11 @@ end
       while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
     end,
   }
-end)()
+end)
+if not __dcOk then
+  ac.log("DriveChat load failed: " .. tostring(DriveChat))
+  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end }
+end
 
 function script.update(dt)
   Core.update(dt)
@@ -2178,7 +2167,7 @@ function script.update(dt)
   rewindUpdate(dt)
   shaddaUpdate(dt)
 
-  DriveChat.update(dt)
+  pcall(function() DriveChat.update(dt) end)
 end
 
 --=================================================================
