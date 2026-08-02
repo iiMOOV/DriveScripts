@@ -750,6 +750,8 @@ function script.update(dt)
   local canCap = true
   if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
   if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
+  -- يكشف شات ملف اللاعب (يضبط حالة الإدخال UI) — يوقف شدّات الأدمن وأنت تكتب في الشات
+  if type(ac.getCurrentInputMethod) == "function" and ac.getCurrentInputMethod() == ac.UserInputMode.UI then canCap = false end
 
   local ckn = canCap and ui.keyboardButtonDown(CLOSE_KEY)
   if ckn and not prevCloseKey then panelOpen = not panelOpen end
