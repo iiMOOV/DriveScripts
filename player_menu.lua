@@ -1646,7 +1646,7 @@ local menuPrevKey = false
 local DriveChat = (function()
   -- ===== إعدادات سريعة =====
   local KEY      = string.byte("C")   -- زر فتح/قفل الشات
-  local ALLOW_TP = true               -- كلك يمين على اسم = انتقال للاعب (خلّه false لو ما تبيه للكل)
+  local ALLOW_TP = false              -- معطل (كان يكرش أحياناً وقت الانتقال للاعب من الشات)
 
   -- ===== ألوان هوية DRIVE =====
   local ACC = rgbm(1.00, 0.45, 0.06, 1)   -- برتقالي هوية درايف (COR)
@@ -1790,6 +1790,7 @@ local DriveChat = (function()
     -- ستيكر: "$STICK:<رقم>" — يرسم صورة بدل نص
     local sidx = msg:match("^%$STICK:(%d+)$")
     if sidx then
+      if sender == 0 then return true end   -- صدى ستيكرك — مضاف محلياً
       local st = STICKERS[tonumber(sidx)]
       if st then
         local ssrv = not sender or sender < 0
@@ -1799,6 +1800,7 @@ local DriveChat = (function()
       end
       return true
     end
+    if sender == 0 then return true end   -- صدى رسالتك — مضافة محلياً عند الإرسال
     local srv = not sender or sender < 0
     local nm = srv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
     chatLog[#chatLog + 1] = { name = nm, text = translateServer(msg), srv = srv, mine = (sender == 0), rawName = (not srv) and nm or nil, t = pulseT }
@@ -2077,7 +2079,11 @@ local function drawChatBar(sim)
           if ui.itemHovered() then ui.drawRectFilled(vec2(sx - 3, 2), vec2(sx + ssz + 3, ssz + 8), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 8) end
           ui.setCursor(vec2(sx, 5))
           pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
-          if sc then pcall(function() ac.sendChatMessage("$STICK:" .. i) end) end
+          if sc then
+        chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, t = pulseT }
+        while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+        pcall(function() ac.sendChatMessage("$STICK:" .. i) end)
+      end
         end
         ui.setCursor(vec2(6 + #STICKERS * (stickerH - 10), 0)); ui.dummy(vec2(1, 1))
       end)
@@ -2105,7 +2111,11 @@ local function drawChatBar(sim)
       dwRightBox("اكتب رسالتك هنا...", 13, 18, iy, bw - 140, 38, CDm)
     end
     if bigButton(bw - 108, iy, 98, 38, "إرسال", chatInput ~= "" and ACC or rgbm(0.3, 0.3, 0.36, 1), "##chatsend") or (entered and chatInput ~= "") then
-      if chatInput ~= "" then pcall(function() ac.sendChatMessage(chatInput) end); chatInput = ""; chatInputGen = chatInputGen + 1 end
+      if chatInput ~= "" then
+        chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = chatInput, srv = false, mine = true, t = pulseT }
+        while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+        pcall(function() ac.sendChatMessage(chatInput) end); chatInput = ""; chatInputGen = chatInputGen + 1
+      end
     end
 
     -- move the chat window by dragging any EMPTY area (does NOT block buttons/input)
