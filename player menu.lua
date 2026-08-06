@@ -1129,19 +1129,20 @@ local function drawRewind(X, Y, W, H)
   end)
 end
 
---=================================================================
--- [17] FEATURE: WEATHER  (جو ووقت شخصي)
---   شرط السيرفر: EnableClientMessages: true في extra_cfg.yml
---=================================================================
+---------------------------------------------------------------
+--  17 -- DRIVE Weather Tab  (الوقت client-side عبر Pure/CSP — يشتغل على CSP الجديد)
+-- الجو: عبر البلقن (زي ما هو). الوقت: محلي عبر ac.setWeatherTimeOffset.
+-- شرط: اللاعبين على Pure (أو أي WeatherFX يدعم setWeatherTimeOffset).
+---------------------------------------------------------------
 local driveWeatherEvent = ac.OnlineEvent({
   ac.StructItem.key("driveWeather"),
-  command     = ac.StructItem.int32(),   -- 1=weather 2=time 3=reset
-  weatherType = ac.StructItem.int32(),   -- قيمة WeatherFxType الخام
+  command     = ac.StructItem.int32(),   -- 1=weather 3=reset  (الوقت صار محلي، ما نبعثه)
+  weatherType = ac.StructItem.int32(),
   hour        = ac.StructItem.int32(),
   minute      = ac.StructItem.int32(),
 }, function(sender, data) end)
-
--- كل أنواع الجو من CSP تلقائيًا (نفس اجواء comfy)
+ 
+-- كل أنواع الجو من CSP تلقائيًا
 local wList = {}
 for name, id in pairs(ac.WeatherType) do
   if type(id) == "number" and name ~= "None" then
@@ -1149,32 +1150,52 @@ for name, id in pairs(ac.WeatherType) do
   end
 end
 table.sort(wList, function(a, b) return a.name < b.name end)
-
-local wTime     = 720   -- 12:00
-local wSel      = -1
-local wDirty    = false
-local wLastSent = -1
-
-local function wSendWeather(id)
-  driveWeatherEvent{ command = 1, weatherType = id, hour = 0, minute = 0 }
-  wSel = id
+ 
+local wTime          = 720   -- 12:00 (دقائق)
+local wSel           = -1
+local wDirty         = false
+local wLastSent      = -1
+local wAppliedOffset = 0     -- إجمالي الإزاحة المطبّقة (عشان نقدر نرجّع)
+ 
+-- ===== الجو (عبر البلقن) =====
+local function wSendWeather(id) driveWeatherEvent{ command = 1, weatherType = id, hour = 0, minute = 0 }; wSel = id end
+local function wSendWeatherReset() driveWeatherEvent{ command = 3, weatherType = 0, hour = 0, minute = 0 } end
+ 
+-- ===== الوقت (محلي عبر CSP/Pure) =====
+-- يضبط وقت اليوم على targetSec محليًا، ويتراكم عليه الوقت (يتحرّك = يشتغل على CSP الجديد)
+local function wApplyLocalTime(targetSec)
+  local d = os.date("!*t", ac.getSim().timestamp)
+  local curSec = d.hour * 3600 + d.min * 60 + d.sec
+  local delta = targetSec - curSec
+  -- أقصر مسار (ما يلف يوم كامل)
+  if delta > 43200 then delta = delta - 86400
+  elseif delta < -43200 then delta = delta + 86400 end
+  if math.abs(delta) >= 1 then
+    ac.setWeatherTimeOffset(delta, true)
+    wAppliedOffset = wAppliedOffset + delta
+  end
 end
-
-local function wSendTime()
-  driveWeatherEvent{ command = 2, weatherType = 0, hour = math.floor(wTime / 60), minute = wTime % 60 }
-  wLastSent = os.clock()
+ 
+-- يرجّع الوقت لوقت السيرفر (يلغي كل الإزاحة اللي طبّقناها)
+local function wResetLocalTime()
+  if math.abs(wAppliedOffset) >= 0.5 then
+    ac.setWeatherTimeOffset(-wAppliedOffset, true)
+    wAppliedOffset = 0
+  end
 end
-
-local function wSendReset()
-  driveWeatherEvent{ command = 3, weatherType = 0, hour = 0, minute = 0 }
+ 
+local function wResetAll()
+  wResetLocalTime()       -- الوقت المحلي يرجع
+  wSendWeatherReset()     -- الجو يرجع لجو السيرفر
   wSel = -1
 end
-
-local function drawWeather(X, Y, W, H)
+ 
+-- global عشان mainUI يقدر يناديها
+function drawWeather(X, Y, W, H)
   sectionTitle("الجو والوقت", "WEATHER", X, Y, W)
   local topY = Y + 46
-
-  -- ===== الوقت (سلايدر: ساعة/دقيقة) =====
+ 
+  -- ===== الوقت (سلايدر: ساعة/دقيقة) — محلي =====
   dwLeftBox("الوقت", 13, X, topY, 120, 18, ACC)
   ui.setCursor(vec2(X, topY + 22))
   ui.setNextItemWidth(W)
@@ -1183,12 +1204,16 @@ local function drawWeather(X, Y, W, H)
   local nv = ui.slider("##wtime", wTime, 0, 1439,
     string.format("  %02d:%02d", math.floor(wTime / 60), wTime % 60))
   ui.popStyleColor(2)
-  -- يُرسل فقط عند التحريك الفعلي (ما يرسل عند مجرد فتح التبويب)
   local newT = math.floor(nv)
   if newT ~= wTime then wTime = newT; wDirty = true end
-  if wDirty and (os.clock() - wLastSent) > 0.15 then wSendTime(); wDirty = false end
-
-  -- ===== قائمة الأجواء (عمودين، تضغط تختار) =====
+  -- يطبّق فقط عند التحريك الفعلي (مُخفّف)
+  if wDirty and (os.clock() - wLastSent) > 0.15 then
+    wApplyLocalTime(wTime * 60)
+    wLastSent = os.clock()
+    wDirty = false
+  end
+ 
+  -- ===== قائمة الأجواء (عبر البلقن) =====
   local btnH   = 42
   local resetY = Y + H - btnH
   local listY  = topY + 58
@@ -1216,11 +1241,10 @@ local function drawWeather(X, Y, W, H)
     end
     ui.dummy(vec2(1, math.ceil(#wList / 2) * 40 + 8))
   end)
-
-  -- ===== رجوع لجو السيرفر =====
-  if bigButton(X, resetY, W, btnH, "رجوع لجو السيرفر", ACC, "##wreset") then wSendReset() end
+ 
+  -- ===== رجوع لجو + وقت السيرفر =====
+  if bigButton(X, resetY, W, btnH, "رجوع لجو السيرفر", ACC, "##wreset") then wResetAll() end
 end
-
 --=================================================================
 -- [18] FEATURE: SHADDA POINTS  (شدّات ثابتة خاصة باللاعب)
 --   اللاعب يوقف بالمكان اللي يبيه، يحفظه في حرف، وبعدها يضغط
