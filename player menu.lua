@@ -199,18 +199,10 @@ local Core = {
 }
 
 -- true لو اللاعب يكتب في الشات أو في خانة نص (نمنع المفاتيح وقتها)
-local chatTyping = false   -- يصير true وقت الشات مفتوح — يوقف مفاتيح المنيو (رجوع/بوست/شدّات) عشان ما تكرش
 local function isTyping()
-  if chatTyping then return true end
   if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then return true end
   if type(ac.isChatOpen) == "function" and ac.isChatOpen() then return true end
   return false
-end
-
--- تحقق إن المتجه صالح (مو NaN ولا لانهاية ولا قيم مجنونة) — يمنع كراش الفيزياء
-local function vfinite(v)
-  return v ~= nil and v.x == v.x and v.y == v.y and v.z == v.z
-    and v.x < 1e9 and v.x > -1e9 and v.y < 1e9 and v.y > -1e9 and v.z < 1e9 and v.z > -1e9
 end
 
 function Core.ghostStart()
@@ -1008,19 +1000,15 @@ local function rewindUpdate(dt)
     local popN = math.floor((dt * rewindStore.speed) / CFG.REWIND_INTERVAL)
     if popN < 1 then popN = 1 end
     for _ = 1, popN do if #rHistory > 0 then rLastState = table.remove(rHistory) end end
-    -- تحصين: لا نطعم الفيزياء إحداثيات/اتجاه غير صالح (يمنع كراش ReplayManager)
-    if rLastState and vfinite(rLastState.pos) and vfinite(rLastState.look) and vfinite(rLastState.up)
-       and rLastState.look:length() > 0.05 and rLastState.up:length() > 0.05 then
-      pcall(function()
-        physics.setCarVelocity(0, vec3(0, 0, 0))
-        physics.setCarPosition(0, rLastState.pos, -rLastState.look, rLastState.up)
-      end)
+    if rLastState then
+      physics.setCarVelocity(0, vec3(0, 0, 0))
+      physics.setCarPosition(0, rLastState.pos, -rLastState.look, rLastState.up)
     end
   else
     rIsRewinding = false
     if rWasRewinding then
       rWasRewinding = false
-      if rLastState and vfinite(rLastState.vel) then pcall(function() physics.setCarVelocity(0, rLastState.vel) end) end
+      if rLastState then physics.setCarVelocity(0, rLastState.vel) end
       Core.ghostStart()
     end
     rRecordTimer = rRecordTimer + dt
@@ -2222,6 +2210,7 @@ end
 local function drawChatHint()
   if not CFG.SHOW_OPEN_HINT then return end
   if DriveChat.isOpen() then return end
+  if Core.clock - lastDrawClock > 0.5 then return end
 
   local screen = ac.getUI().windowSize
   local intro = Core.clock < CFG.HINT_INTRO_SEC
