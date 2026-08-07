@@ -1907,7 +1907,7 @@ local function drawChatBar(sim)
       local hov = ui.windowHovered()
       ui.drawRectFilled(vec2(0, 0), vec2(hw, hh), rgbm(0.07, 0.075, 0.1, hov and 0.95 or 0.55), 9)
       ui.drawRect(vec2(0.5, 0.5), vec2(hw - 0.5, hh - 0.5), rgbm(ACC.r, ACC.g, ACC.b, hov and 0.9 or 0.4), 9, nil, 1.2)
-      dwBox("\U0001F4AC \u0627\u0644\u0634\u0627\u062a", 13, 0, 4, hw, 18, hov and CW or CDm)
+      dwBox("💬 الشات", 13, 0, 4, hw, 18, hov and CW or CDm)
       if hov then cSt.chatMin = false; cSt.chatBarIdle = pulseT end
     end)
     return
@@ -1929,7 +1929,7 @@ local function drawChatBar(sim)
   y0 = math.max(60, math.min(sim.windowHeight - 60, y0))
   cSt.chatMidX = x0 + bw * 0.5; cSt.chatBotY = y0 + bh
 
-  -- ===== \u0635\u0646\u062f\u0648\u0642 \u062e\u0627\u0631\u062c\u064a \u0641\u0648\u0642 \u0627\u0644\u0634\u0627\u062a \u0644\u0644\u0648\u062d\u0629 \u0627\u0644\u0645\u0641\u062a\u0648\u062d\u0629 =====
+  -- ===== صندوق خارجي فوق الشات للوحة المفتوحة =====
   if cSt.panel then
     local ph2 = (cSt.panel == "emoji" and 156) or (cSt.panel == "phrases" and (prows * 46 + 20)) or 96
     local py2 = y0 - ph2 - 8
@@ -1946,10 +1946,10 @@ local function drawChatBar(sim)
           ui.setCursor(vec2(rx, 10))
           local rc = ui.invisibleButton("##rec" .. i, vec2(rw, 36))
           ui.drawRectFilled(vec2(rx, 10), vec2(rx + rw, 46), ui.itemHovered() and rgbm(ACC.r, ACC.g, ACC.b, 0.6) or rgbm(1, 1, 1, 0.09), 8)
-          dwBox(recs[i] ~= "" and recs[i] or "\u00b7", 21, rx, 10, rw, 36, CW)
+          dwBox(recs[i] ~= "" and recs[i] or "·", 21, rx, 10, rw, 36, CW)
           if rc and recs[i] ~= "" then useEmoji(recs[i]) end
         end
-        dwRightBox("\u0627\u0644\u0623\u0643\u062b\u0631 \u0627\u0633\u062a\u062e\u062f\u0627\u0645\u0627\u064b", 11, 200, 21, bw - 212, 16, CDm)
+        dwRightBox("الأكثر استخداماً", 11, 200, 21, bw - 212, 16, CDm)
         ui.drawRectFilled(vec2(10, 52), vec2(bw - 10, 148), rgbm(0, 0, 0, 0.22), 8)
         ui.setCursor(vec2(10, 52))
         ui.childWindow("##allemoji", vec2(bw - 20, 96), function()
@@ -1979,7 +1979,7 @@ local function drawChatBar(sim)
           ui.drawRectFilled(vec2(px, py), vec2(px + qw, py + 40), hov and rgbm(ACC.r, ACC.g, ACC.b, 0.9) or rgbm(1, 1, 1, 0.06), 9)
           dwBox(ph, 15, px, py, qw, 40, hov and DK or CW)
           if cl then
-            chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "\u0623\u0646\u062a", text = ph, srv = false, mine = true, t = pulseT }
+            chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = ph, srv = false, mine = true, t = pulseT }
             while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
             pcall(function() ac.sendChatMessage(ph) end)
           end
@@ -1998,7 +1998,7 @@ local function drawChatBar(sim)
             ui.setCursor(vec2(sx, 6))
             pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
             if sc then
-              chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "\u0623\u0646\u062a", sticker = st.url, srv = false, mine = true, t = pulseT }
+              chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, t = pulseT }
               while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
               pcall(function() ac.sendChatMessage("$STICK:" .. i) end)
             end
@@ -2015,17 +2015,17 @@ local function drawChatBar(sim)
   ui.transparentWindow("driveChatBar", vec2(x0, y0), vec2(bw, bh), true, true, function()
     ui.drawRectFilled(vec2(0, 0), vec2(bw, bh), rgbm(0.07, 0.075, 0.1, cStor.dc_opacity), 14)
     ui.drawRect(vec2(0.5, 0.5), vec2(bw - 0.5, bh - 0.5), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 14, nil, 1.4)
-    -- \u0647\u064a\u062f\u0631: \u0639\u0646\u0648\u0627\u0646 + \u0634\u0641\u0627\u0641\u064a\u0629 + \u0625\u063a\u0644\u0627\u0642
-    dwBox("DRIVE \u00b7 \u0627\u0644\u0634\u0627\u062a", 14, 0, 8, bw, 18, CY)
-    dwBox("\u0634\u0641\u0627\u0641\u064a\u0629", 11, bw - 214, 8, 46, 16, CDm)
+    -- هيدر: عنوان + شفافية + إغلاق
+    dwBox("DRIVE · الشات", 14, 0, 8, bw, 18, CY)
+    dwBox("شفافية", 11, bw - 214, 8, 46, 16, CDm)
     ui.setCursor(vec2(bw - 164, 7))
     ui.setNextItemWidth(96)
     cStor.dc_opacity = ui.slider("##chatopac", cStor.dc_opacity, 0.35, 1.0, "%.2f")
-    if bigButton(bw - 52, 5, 42, 22, "\u2715", rgbm(0.62, 0.28, 0.30, 1), "##chatclose") then chatBarOpen = false; return end
-    -- \u062e\u0637 \u0647\u0648\u064a\u0629 \u0631\u0641\u064a\u0639 \u062a\u062d\u062a \u0627\u0644\u0647\u064a\u062f\u0631 (\u0628\u062f\u0644 \u0627\u0644\u0634\u0631\u064a\u0637 \u0627\u0644\u0645\u0643\u0633\u0648\u0631)
+    if bigButton(bw - 52, 5, 42, 22, "✕", rgbm(0.62, 0.28, 0.30, 1), "##chatclose") then chatBarOpen = false; return end
+    -- خط هوية رفيع تحت الهيدر (بدل الشريط المكسور)
     ui.drawRectFilled(vec2(12, 30), vec2(bw - 12, 32), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 1)
 
-    -- \u0627\u0644\u0633\u062c\u0644
+    -- السجل
     ui.drawRectFilled(vec2(10, topY), vec2(bw - 10, topY + histH), rgbm(0, 0, 0, 0.28), 10)
     ui.setCursor(vec2(10, topY))
     ui.childWindow("##chathist", vec2(bw - 20, histH), function()
@@ -2039,7 +2039,7 @@ local function drawChatBar(sim)
       chatBarLastCount = #chatLog
     end)
 
-    -- \u0634\u0631\u064a\u0637 \u0627\u0644\u062a\u0628\u0648\u064a\u0628\u0627\u062a (\u064a\u0641\u062a\u062d \u0635\u0646\u062f\u0648\u0642 \u062e\u0627\u0631\u062c\u064a)
+    -- شريط التبويبات (يفتح صندوق خارجي)
     local function tab(x, w, label, id, key)
       local on = cSt.panel == key
       if bigButton(x, tabsY, w, tabsH - 4, label, on and ACC or rgbm(0.16, 0.17, 0.21, 1), id) then
@@ -2047,11 +2047,11 @@ local function drawChatBar(sim)
       end
     end
     local tw = (bw - 20 - 16) / 3
-    tab(10, tw, "\U0001F600 \u0625\u064a\u0645\u0648\u062c\u064a", "##tab_em", "emoji")
-    tab(10 + tw + 8, tw, "\U0001F4AC \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a", "##tab_ph", "phrases")
-    tab(10 + (tw + 8) * 2, tw, "\U0001F5BC \u0633\u062a\u064a\u0643\u0631\u0632", "##tab_st", "stickers")
+    tab(10, tw, "😀 إيموجي", "##tab_em", "emoji")
+    tab(10 + tw + 8, tw, "💬 اختصارات", "##tab_ph", "phrases")
+    tab(10 + (tw + 8) * 2, tw, "🖼️ ستيكرز", "##tab_st", "stickers")
 
-    -- \u0645\u0631\u0628\u0639 \u0627\u0644\u0643\u062a\u0627\u0628\u0629
+    -- مربع الكتابة
     local prevW = bw - 140
     local th = 38
     if chatInput ~= "" then
@@ -2069,17 +2069,17 @@ local function drawChatBar(sim)
       ui.setCursor(vec2(18, top + 4))
       ui.dwriteTextAligned(chatInput, 16, ui.Alignment.End, ui.Alignment.Start, vec2(prevW, th - 8), true, CW)
     else
-      dwRightBox("\u0627\u0643\u062a\u0628 \u0631\u0633\u0627\u0644\u062a\u0643 \u0647\u0646\u0627...", 13, 18, iy, bw - 140, 38, CDm)
+      dwRightBox("اكتب رسالتك هنا...", 13, 18, iy, bw - 140, 38, CDm)
     end
-    if bigButton(bw - 108, iy, 98, 38, "\u0625\u0631\u0633\u0627\u0644", chatInput ~= "" and ACC or rgbm(0.3, 0.3, 0.36, 1), "##chatsend") or (entered and chatInput ~= "") then
+    if bigButton(bw - 108, iy, 98, 38, "إرسال", chatInput ~= "" and ACC or rgbm(0.3, 0.3, 0.36, 1), "##chatsend") or (entered and chatInput ~= "") then
       if chatInput ~= "" then
-        chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "\u0623\u0646\u062a", text = chatInput, srv = false, mine = true, t = pulseT }
+        chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = chatInput, srv = false, mine = true, t = pulseT }
         while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
         pcall(function() ac.sendChatMessage(chatInput) end); chatInput = ""; chatInputGen = chatInputGen + 1
       end
     end
 
-    -- \u0633\u062d\u0628 \u0627\u0644\u0646\u0627\u0641\u0630\u0629
+    -- سحب النافذة
     if ui.windowHovered() and ui.mouseDown(ui.MouseButton.Left) and not ui.anyItemActive() and not chatDragging then
       chatDragging = true; chatDragStart = ui.mousePos(); chatOfsStart = vec2(cStor.dc_ofsX, cStor.dc_ofsY)
     end
@@ -2090,7 +2090,7 @@ local function drawChatBar(sim)
         cStor.dc_ofsY = chatOfsStart.y + (mp.y - chatDragStart.y)
       else chatDragging = false end
     end
-    -- \u0645\u0642\u0628\u0636 \u0627\u0644\u062a\u062d\u062c\u064a\u0645
+    -- مقبض التحجيم
     local gs = 18
     ui.setCursor(vec2(4, bh - gs - 4))
     ui.invisibleButton("##chatgrip", vec2(gs, gs))
