@@ -1163,24 +1163,43 @@ local function wSendWeatherReset() driveWeatherEvent{ command = 3, weatherType =
  
 -- ===== الوقت (محلي عبر CSP/Pure) =====
 -- يضبط وقت اليوم على targetSec محليًا، ويتراكم عليه الوقت (يتحرّك = يشتغل على CSP الجديد)
+-- حالة الـ API: nil=ما جُرّب، true=متاح، false=غير متاح (ما نعيد المحاولة)
+wTimeApiOk = nil
+
+-- يطبّق إزاحة الوقت بأمان تام (أي خطأ ما يكسر اللوحة)
+local function wShiftTime(seconds)
+  if seconds == 0 then return true end
+  local ok = pcall(function()
+    if ac.setWeatherTimeOffset ~= nil then
+      ac.setWeatherTimeOffset(seconds, true)
+    elseif ac.setWeatherExactUTC0Timestamp ~= nil then
+      ac.setWeatherExactUTC0Timestamp(ac.getSim().timestamp + seconds, true)
+    else
+      error("no time api")
+    end
+  end)
+  wTimeApiOk = ok
+  return ok
+end
+
 local function wApplyLocalTime(targetSec)
-  local d = os.date("!*t", ac.getSim().timestamp)
-  local curSec = d.hour * 3600 + d.min * 60 + d.sec
+  local ok, curSec = pcall(function()
+    local d = os.date("!*t", ac.getSim().timestamp)
+    return d.hour * 3600 + d.min * 60 + d.sec
+  end)
+  if not ok then wTimeApiOk = false; return end
   local delta = targetSec - curSec
-  -- أقصر مسار (ما يلف يوم كامل)
   if delta > 43200 then delta = delta - 86400
   elseif delta < -43200 then delta = delta + 86400 end
   if math.abs(delta) >= 1 then
-    ac.setWeatherTimeOffset(delta, true)
-    wAppliedOffset = wAppliedOffset + delta
+    if wShiftTime(delta) then wAppliedOffset = wAppliedOffset + delta end
   end
 end
- 
+
 -- يرجّع الوقت لوقت السيرفر (يلغي كل الإزاحة اللي طبّقناها)
 local function wResetLocalTime()
   if math.abs(wAppliedOffset) >= 0.5 then
-    ac.setWeatherTimeOffset(-wAppliedOffset, true)
-    wAppliedOffset = 0
+    if wShiftTime(-wAppliedOffset) then wAppliedOffset = 0 end
   end
 end
  
@@ -1211,6 +1230,10 @@ function drawWeather(X, Y, W, H)
     wApplyLocalTime(wTime * 60)
     wLastSent = os.clock()
     wDirty = false
+  end
+  -- مؤشّر توفّر دالة الوقت (للتشخيص)
+  if wTimeApiOk == false then
+    dwBox("time API not available in this CSP", 11, X, topY + 46, W, 14, rgbm(1, 0.4, 0.3, 1))
   end
  
   -- ===== قائمة الأجواء (عبر البلقن) =====
