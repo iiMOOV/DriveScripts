@@ -1777,7 +1777,19 @@ local __dcOk, DriveChat = pcall(function()
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
     { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
-    { url = "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif" },
+    { url = "https://pbs.twimg.com/media/G7gyUn4WMAAafxA.jpg" },
+    { url = "https://pbs.twimg.com/media/E1cfC1xWQAAEbps.jpg" },
+    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcToODvhggidt4_Kg171VDkB6UKjwSgQMyjdH3PENoBTjl0azmBzSiqsa2DM&s=10" },
+    { url = "https://i.pinimg.com/236x/9c/b9/17/9cb917337ebedb3dda74c974bde47dc0.jpg" },
+    { url = "https://pbs.twimg.com/media/G0epVe6WwAA_QhZ.jpg" },
+    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
+    { url = "https://pbs.twimg.com/media/DL4GBkpXkAEJvuj.jpg" },
+    { url = "https://pbs.twimg.com/media/HAq9wKTbQAEp4YP.jpg" },
+    { url = "https://pbs.twimg.com/media/E5FplBNWYAQLQ4L.jpg" },
+    { url = "https://pbs.twimg.com/media/Eo_xjUBWEAIRyF7.jpg" },
+    { url = "https://i.makeagif.com/media/12-17-2023/cwSiZY.gif" },
+    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQUYRF_AMoy6sdcbY-35dv10f-kyDb8oB0m45GmcQkttJqtBMAy2RQsEqo&s=10" },
+    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYcVrVTFpPJbkg6j8KfIk9NVMm_YKKFmg-MkTyLojLIx-WcbLXVRPmRAA&s=10" }, 
   }
 
   ac.onChatMessage(function(message, sender)
