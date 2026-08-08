@@ -2033,7 +2033,7 @@ local function drawChatBar(sim)
     dwBox("للإرسال اضغط ENTER  ·  C لإخفاء الشات", 13, W * 0.5 - 190, hintY, 380, 30, CDm)
 
     local bodyY = HDR + 52
-    local SBW = 284
+    local SBW = 224
     local pad = 14
     local inputH = 46
     local footY = H - 14 - inputH   -- أعلى مربع الكتابة
@@ -2114,14 +2114,17 @@ local function drawChatBar(sim)
     -- ===== مربع الكتابة + زر الإرسال =====
     local inY = footY
     local sendW = 56
-    ui.drawRectFilled(vec2(chX, inY), vec2(chX + chW - sendW - 10, inY + inputH), rgbm(0.13, 0.13, 0.15, 1), 12)
-    ui.drawRect(vec2(chX, inY), vec2(chX + chW - sendW - 10, inY + inputH), rgbm(ACC.r, ACC.g, ACC.b, 0.30), 12, nil, 1)
+    local inX2 = chX + chW - sendW - 10
+    ui.drawRectFilled(vec2(chX, inY), vec2(inX2, inY + inputH), rgbm(0.13, 0.13, 0.15, 1), 12)
+    ui.drawRect(vec2(chX, inY), vec2(inX2, inY + inputH), rgbm(ACC.r, ACC.g, ACC.b, 0.30), 12, nil, 1)
     ui.setCursor(vec2(chX + 14, inY + (inputH - 26) * 0.5)); ui.setNextItemWidth(chW - sendW - 40)
     local nt, changed, entered = ui.inputText("##chatin" .. chatInputGen, chatInput, ui.InputTextFlags.RetainSelection)
     if changed then chatInput = nt end
+    -- غطّي نص الإدخال الأصلي (يطلع مقلوب/مكرر) وأظهر المعاينة العربية الصحيحة فقط
+    ui.drawRectFilled(vec2(chX + 2, inY + 2), vec2(inX2 - 2, inY + inputH - 2), rgbm(0.13, 0.13, 0.15, 1), 11)
     if chatInput ~= "" then
-      ui.setCursor(vec2(chX + 16, inY))
       ui.pushDWriteFont(FONT)
+      ui.setCursor(vec2(chX + 16, inY))
       ui.dwriteTextAligned(chatInput, 16, ui.Alignment.End, ui.Alignment.Center, vec2(chW - sendW - 40, inputH), true, CW)
       ui.popDWriteFont()
     else
@@ -2151,7 +2154,7 @@ local function drawChatBar(sim)
       local hov = ui.itemHovered()
       ui.drawRectFilled(vec2(x, fbY), vec2(x + w, fbY + 30), on and rgbm(ACC.r, ACC.g, ACC.b, 0.9) or (hov and rgbm(1, 1, 1, 0.10) or rgbm(0.13, 0.13, 0.15, 1)), 9)
       dwBox(label, 15, x, fbY, w, 30, on and DK or CW)
-      if cl then cSt.panel = on and nil or key end
+      if cl then if on then cSt.panel = nil else cSt.panel = key end end
     end
     fbtn(pad, 44, "😀", "emoji")
     fbtn(pad + 50, 44, "🖼", "stickers")
@@ -2209,6 +2212,8 @@ local function drawChatBar(sim)
             ui.setCursor(vec2(sx, 6))
             local sc = ui.invisibleButton("##st" .. i, vec2(ssz, ssz))
             if ui.itemHovered() then ui.drawRectFilled(vec2(sx - 3, 3), vec2(sx + ssz + 3, ssz + 9), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 8) end
+            ui.drawRectFilled(vec2(sx, 6), vec2(sx + ssz, 6 + ssz), rgbm(0.16, 0.16, 0.19, 1), 8)
+            dwBox("🖼", 26, sx, 6, ssz, ssz, rgbm(1, 1, 1, 0.25))
             ui.setCursor(vec2(sx, 6))
             pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
             if sc then
@@ -2220,6 +2225,12 @@ local function drawChatBar(sim)
           ui.setCursor(vec2(6 + #STICKERS * 94, 0)); ui.dummy(vec2(1, 1))
         end
       end)
+      -- زر إغلاق اللوحة ✕ (بالإضافة إلى الضغط على نفس الزر)
+      ui.setCursor(vec2(px + pw - 26, py + 4))
+      local pxc = ui.invisibleButton("##panelx", vec2(22, 22))
+      ui.drawRectFilled(vec2(px + pw - 26, py + 4), vec2(px + pw - 4, py + 26), ui.itemHovered() and rgbm(0.82, 0.26, 0.20, 1) or rgbm(0.22, 0.22, 0.26, 0.92), 6)
+      dwBox("✕", 13, px + pw - 26, py + 4, 22, 22, CW)
+      if pxc then cSt.panel = nil end
     end
 
     -- ===== مقبض التحجيم (زاوية سفلى يمين) =====
