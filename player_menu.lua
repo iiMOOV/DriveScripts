@@ -1642,12 +1642,12 @@ local menuPrevKey = false
 --=================================================================
 local __dcOk, DriveChat = pcall(function()
   -- ===== إعدادات سريعة =====
-  local KEY      = string.byte("C")   -- زر فتح/قفل الشات
-  local ALLOW_TP = false              -- معطل (كان يكرش أحياناً وقت الانتقال للاعب من الشات)
+  local KEY      = string.byte("C")   
+  local ALLOW_TP = false              
 
-  -- ===== ألوان هوية DRIVE الجديدة (مطابقة للصورة) =====
-  local C_MAIN   = rgbm(1.00, 0.65, 0.00, 1)   -- برتقالي/أصفر الهيدر
-  local C_BG     = rgbm(0.08, 0.08, 0.09, 1)   -- خلفية الشات الغامقة
+  -- ===== ألوان هوية DRIVE (مطابقة للصورة) =====
+  local ACC      = rgbm(1.00, 0.65, 0.00, 1)   -- برتقالي/أصفر الهيدر
+  local C_BG     = rgbm(0.08, 0.08, 0.09, 0.95)-- خلفية الشات الغامقة
   local C_PANEL  = rgbm(0.12, 0.12, 0.14, 1)   -- خلفية القوائم الجانبية
   local C_BUBBLE = rgbm(0.15, 0.15, 0.17, 1)   -- خلفية رسائل الآخرين
   local CW       = rgbm.colors.white
@@ -1675,17 +1675,18 @@ local __dcOk, DriveChat = pcall(function()
 
   local function drawAvatar(name, x, y, size)
     local initials = (name and name ~= "") and string.sub(name, 1, 2):upper() or "??"
-    ui.drawCircleFilled(vec2(x + size/2, y + size/2), size/2, C_PANEL, 30)
+    ui.drawCircleFilled(vec2(x + size/2, y + size/2), size/2, C_BG, 30)
     ui.drawCircle(vec2(x + size/2, y + size/2), size/2, rgbm(1,1,1,0.1), 30, 1)
     dwBox(initials, size * 0.45, x, y, size, size, CW)
   end
 
-  local function iconBtn(x, y, size, icon, id, active)
+  local function iconBtn(x, y, w, h, label, id, active)
     ui.setCursor(vec2(x, y))
-    local cl = ui.invisibleButton(id, vec2(size, size))
+    local cl = ui.invisibleButton(id, vec2(w, h))
     local hov = ui.itemHovered()
-    ui.drawRectFilled(vec2(x, y), vec2(x + size, y + size), (active or hov) and C_MAIN or C_PANEL, 6)
-    dwBox(icon, size * 0.5, x, y, size, size, (active or hov) and DK or C_MAIN)
+    ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), (active or hov) and ACC or C_PANEL, 6)
+    ui.drawRect(vec2(x, y), vec2(x + w, y + h), ACC, 6, nil, 1)
+    dwBox(label, 14, x, y, w, h, (active or hov) and DK or ACC)
     return cl
   end
 
@@ -1700,10 +1701,8 @@ local __dcOk, DriveChat = pcall(function()
   local chatBarLastCount = 0
   local chatDragging, chatDragStart, chatOfsStart = false, vec2(0, 0), vec2(0, 0)
   local memberSearch = ""
-  local cSt = { chatMin = false, panel = nil }
-  
-  -- خزن الأبعاد الافتراضية للشكل الجديد (أعرض وأطول)
-  local cStor = ac.storage{ dc_opacity = 0.95, dc_w = 950, dc_histH = 650, dc_ofsX = 0, dc_ofsY = 0 }
+  local cSt = { panel = nil }
+  local cStor = ac.storage{ dc_opacity = 0.95, dc_ofsX = 0, dc_ofsY = 0 }
 
   local QUICK_PHRASES = { "عداك العيب", "كفووووو", "ولا شيء يا كنق", "مدارس", "سلام عليكم", "وعليكم السلام", "لعيونك", "لعيونكم" }
   local EMOJIS = {
@@ -1713,7 +1712,6 @@ local __dcOk, DriveChat = pcall(function()
     "👍","👎","👌","✌️","🤞","🤙","🤘","👊","✊","👏","🙌","👐","🙏",
     "❤️","🔥","⭐","✨","💯","✅","❌","❗","❓","🎉","🚗","🏎️","🚓"
   }
-  
   local STICKERS = {
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
@@ -1724,16 +1722,9 @@ local __dcOk, DriveChat = pcall(function()
     chatInput = chatInput .. em; chatInputGen = chatInputGen + 1
   end
 
-  -- ===== دوال مساعدة للسيرفر والسيارات =====
-  local SERVER_TR = {
-    { "No replay submitted", "ما فيه مقطع محفوظ" },
-    { "Replay received", "تم حفظ المقطع ✓" },
-    { "shutting down", "⚠️ السيرفر يسوي ريستارت" },
-  }
+  -- ===== دوال مساعدة للسيرفر واللاعبين =====
   local function translateServer(m)
-    for _, e in ipairs(SERVER_TR) do
-      if m:find(e[1], 1, true) then return e[2] end
-    end
+    if m:find("shutting down") then return "⚠️ السيرفر يسوي ريستارت" end
     return m
   end
   local function getPlayers()
@@ -1741,9 +1732,7 @@ local __dcOk, DriveChat = pcall(function()
     if not sim then return p end
     for i = 0, sim.carsCount - 1 do
       local nm = ac.getDriverName(i)
-      if nm and nm ~= "" then
-        table.insert(p, {id = i, name = nm, isMe = (i == 0)})
-      end
+      if nm and nm ~= "" then table.insert(p, {id = i, name = nm, isMe = (i == 0)}) end
     end
     return p
   end
@@ -1762,9 +1751,7 @@ local __dcOk, DriveChat = pcall(function()
     if sidx then
       if sender == 0 then return true end
       local st = STICKERS[tonumber(sidx)]
-      if st then
-        chatLog[#chatLog + 1] = { name = nm, sticker = st.url, srv = srv, mine = (sender == 0), time = t_str }
-      end
+      if st then chatLog[#chatLog + 1] = { name = nm, sticker = st.url, srv = srv, mine = (sender == 0), time = t_str } end
     else
       if sender == 0 then return true end
       chatLog[#chatLog + 1] = { name = nm, text = translateServer(msg), srv = srv, mine = (sender == 0), time = t_str }
@@ -1775,52 +1762,51 @@ local __dcOk, DriveChat = pcall(function()
 
   chatLog[#chatLog + 1] = { name = "DRIVE SYSTEM", text = "مرحباً بك في سيرفر DRIVE!\nنتمنى لك وقت ممتع وآمن 💛", srv = true, time = os.date("%H:%M") }
 
-  -- ===== رسم فقاعات الرسائل (ستايل مشابه للصورة) =====
+  -- ===== رسم فقاعات الرسائل (مطابق للصورة) =====
   local function drawMsgBubble(m, W, yy)
     local mine = m.mine and not m.srv
-    local avSize = 36
+    local avSize = 40
     local pad = 12
     local innerW, contentH
     
     if m.sticker then
       innerW, contentH = 100, 100
     else
-      local wr = ui.measureDWriteText(m.text or "", 15, W * 0.5)
+      local wr = ui.measureDWriteText(m.text or "", 15, W * 0.55)
       innerW = math.max(40, math.ceil(wr.x))
       contentH = math.max(20, math.ceil(wr.y))
     end
 
-    local totalH = contentH + 34
-    local bx1 = mine and (W - innerW - pad*2 - avSize - 20) or (avSize + 20)
+    local totalH = contentH + 40
+    local bx1 = mine and (W - innerW - pad*2 - avSize - 25) or (avSize + 25)
     if m.srv then bx1 = (W - innerW - pad*2) * 0.5 end
     local bx2 = bx1 + innerW + pad*2
 
-    -- Avatar & Name & Time
+    -- الاسم والوقت والصورة
     if not m.srv then
       if mine then
         drawAvatar(m.name, W - avSize - 10, yy + 5, avSize)
-        dwRightBox(m.name, 14, bx1, yy, innerW + pad*2, 20, C_MAIN)
+        dwRightBox(m.name, 14, bx1, yy, innerW + pad*2, 20, ACC)
         dwLeftBox(m.time, 11, bx1, yy, innerW + pad*2, 20, CDm)
       else
         drawAvatar(m.name, 10, yy + 5, avSize)
-        dwLeftBox(m.name, 14, bx1, yy, innerW + pad*2, 20, C_MAIN)
+        dwLeftBox(m.name, 14, bx1, yy, innerW + pad*2, 20, ACC)
         dwRightBox(m.time, 11, bx1, yy, innerW + pad*2, 20, CDm)
       end
     else
-      dwBox("DRIVE SYSTEM  " .. (m.time or ""), 12, bx1, yy, innerW + pad*2, 20, C_MAIN)
+      drawAvatar("DS", bx1 - 50, yy + 5, avSize) -- لوجو السيرفر
+      dwBox("DRIVE SYSTEM", 14, bx1, yy, innerW + pad*2, 20, ACC)
     end
 
-    -- Bubble Background
-    local by = yy + 22
-    local bg = m.srv and rgbm(0.1, 0.1, 0.1, 0.5) or C_BUBBLE
-    ui.drawRectFilled(vec2(bx1, by), vec2(bx2, by + contentH + pad*2), bg, 8)
+    -- خلفية الفقاعة
+    local by = yy + 25
+    local bg = m.srv and rgbm(0, 0, 0, 0.3) or C_BUBBLE
+    ui.drawRectFilled(vec2(bx1, by), vec2(bx2, by + contentH + pad*2), bg, 10)
     
-    -- خط الهوية الجانبي للرسائل الخاصة بي
-    if mine then
-      ui.drawRectFilled(vec2(bx2 + 4, by), vec2(bx2 + 6, by + contentH + pad*2), C_MAIN, 2)
-    end
+    -- الخط البرتقالي لرسائلي
+    if mine then ui.drawRectFilled(vec2(bx2 + 5, by), vec2(bx2 + 8, by + contentH + pad*2), ACC, 2) end
 
-    -- Content
+    -- المحتوى
     if m.sticker then
       ui.setCursor(vec2(bx1 + pad, by + pad)); pcall(function() ui.image(m.sticker, vec2(100, 100)) end)
     else
@@ -1828,29 +1814,29 @@ local __dcOk, DriveChat = pcall(function()
       ui.dwriteTextAligned(m.text or "", 15, mine and ui.Alignment.End or ui.Alignment.Start, ui.Alignment.Start, vec2(innerW, contentH), true, CW)
     end
 
-    return totalH + 15
+    return totalH + 20
   end
 
   -- ===== الواجهة الرئيسية =====
   local function drawChatUI(sim)
     if not chatBarOpen then return end
 
-    local bw = math.max(700, cStor.dc_w)
-    local bh = math.max(450, cStor.dc_histH)
+    local bw = 950
+    local bh = 700
     local x0 = (sim.windowWidth - bw) * 0.5 + cStor.dc_ofsX
     local y0 = (sim.windowHeight - bh) * 0.5 + cStor.dc_ofsY
     
-    local leftW = 240  -- عرض قائمة الأعضاء
-    local headH = 50   -- ارتفاع الهيدر
-    
-    -- اللوحات المنبثقة (إيموجي، ستيكرات) - ترسم فوق الشات
+    local leftW = 240  
+    local headH = 50   
+
+    -- النافذة المنبثقة (تفتح فوق الأيقونات)
     if cSt.panel then
       local pw = 300; local ph = 200
-      local px = x0 + leftW + 10
-      local py = y0 + bh - ph - 65
+      local px = x0 + leftW + 20
+      local py = y0 + bh - ph - 95
       ui.transparentWindow("dc_panel", vec2(px, py), vec2(pw, ph), true, true, function()
         ui.drawRectFilled(vec2(0,0), vec2(pw, ph), C_PANEL, 8)
-        ui.drawRect(vec2(0,0), vec2(pw, ph), rgbm(1,1,1,0.1), 8, nil, 1)
+        ui.drawRect(vec2(0,0), vec2(pw, ph), ACC, 8, nil, 1)
         
         if cSt.panel == "emoji" then
           ui.childWindow("##ep", vec2(pw, ph), function()
@@ -1858,7 +1844,9 @@ local __dcOk, DriveChat = pcall(function()
             for i, em in ipairs(EMOJIS) do
               local ex = 10 + ((i-1)%cols)*gw
               local ey = 10 + math.floor((i-1)/cols)*gw
-              if iconBtn(ex, ey, gw, em, "##e"..i) then useEmoji(em) end
+              ui.setCursor(vec2(ex, ey))
+              if ui.invisibleButton("##e"..i, vec2(gw, gw)) then useEmoji(em) end
+              dwBox(em, 16, ex, ey, gw, gw, CW)
             end
           end)
         elseif cSt.panel == "phrases" then
@@ -1869,7 +1857,7 @@ local __dcOk, DriveChat = pcall(function()
               if ui.invisibleButton("##ph"..i, vec2(pw-20, 25)) then
                 chatInput = chatInput .. phrs .. " "
               end
-              ui.drawRectFilled(vec2(10, pyy), vec2(pw-10, pyy+25), ui.itemHovered() and C_MAIN or C_BG, 4)
+              ui.drawRectFilled(vec2(10, pyy), vec2(pw-10, pyy+25), ui.itemHovered() and ACC or C_BG, 4)
               dwRightBox(phrs, 14, 15, pyy, pw-30, 25, ui.itemHovered() and DK or CW)
             end
            end)
@@ -1877,33 +1865,32 @@ local __dcOk, DriveChat = pcall(function()
       end)
     end
 
-    -- النافذة الرئيسية
-    ui.transparentWindow("driveChatBar", vec2(x0, y0), vec2(bw, bh), true, true, function()
-      -- الخلفية الأساسية والإطار
+    ui.transparentWindow("driveChatWindow", vec2(x0, y0), vec2(bw, bh), true, true, function()
+      -- الخلفية الأساسية
       ui.drawRectFilled(vec2(0, 0), vec2(bw, bh), rgbm(C_BG.r, C_BG.g, C_BG.b, cStor.dc_opacity), 12)
-      ui.drawRect(vec2(0,0), vec2(bw, bh), rgbm(C_MAIN.r, C_MAIN.g, C_MAIN.b, 0.3), 12, nil, 1.5)
+      ui.drawRect(vec2(0,0), vec2(bw, bh), ACC, 12, nil, 2)
 
       -- 1. الهيدر البرتقالي
-      ui.drawRectFilled(vec2(0, 0), vec2(bw, headH), C_MAIN, 12, ui.CornerFlags.Top)
-      dwBox("DRIVE", 22, 20, 0, 80, headH, DK)
-      dwBox("الشات 💬", 16, 110, 0, 80, headH, DK)
+      ui.drawRectFilled(vec2(0, 0), vec2(bw, headH), ACC, 10, ui.CornerFlags.Top)
+      dwBox("DRIVE", 24, 15, 0, 80, headH, DK)
+      dwBox("الشات 💬", 16, 105, 0, 80, headH, DK)
       
-      -- أزرار الهيدر
       dwBox("شفافية", 14, bw - 260, 0, 60, headH, DK)
       ui.setCursor(vec2(bw - 190, 15)); ui.setNextItemWidth(100)
-      ui.pushStyleColor(ui.StyleColor.FrameBg, rgbm(0,0,0,0.2))
+      ui.pushStyleColor(ui.StyleColor.FrameBg, rgbm(0,0,0,0.3))
+      ui.pushStyleColor(ui.StyleColor.SliderGrab, DK)
       cStor.dc_opacity = ui.slider("##op", cStor.dc_opacity, 0.3, 1.0, "%.2f")
-      ui.popStyleColor()
+      ui.popStyleColor(2)
       
       ui.setCursor(vec2(bw - 45, 12))
       if ui.invisibleButton("##close", vec2(26, 26)) then chatBarOpen = false end
-      ui.drawRectFilled(vec2(bw - 45, 12), vec2(bw - 19, 38), ui.itemHovered() and rgbm(1,0,0,0.5) or rgbm(0,0,0,0.3), 6)
-      dwBox("✕", 14, bw - 45, 12, 26, 26, CW)
+      ui.drawRectFilled(vec2(bw - 45, 12), vec2(bw - 19, 38), ui.itemHovered() and rgbm(0,0,0,0.5) or rgbm(0,0,0,0.2), 6)
+      dwBox("✕", 14, bw - 45, 12, 26, 26, DK)
 
-      -- رسالة التلميح تحت الهيدر
-      local hntW = 250
-      ui.drawRectFilled(vec2((bw-hntW)/2, headH - 10), vec2((bw+hntW)/2, headH + 20), C_PANEL, 8)
-      dwBox("للإرسال اضغط ENTER لإخفاء الشات C", 12, (bw-hntW)/2, headH - 10, hntW, 30, CW)
+      -- التلميح العائم
+      local hntW = 350
+      ui.drawRectFilled(vec2((bw-hntW)/2, headH - 15), vec2((bw+hntW)/2, headH + 15), C_PANEL, 15)
+      dwBox("للإرسال اضغط ENTER لإخفاء الشات C", 13, (bw-hntW)/2, headH - 15, hntW, 30, CW)
 
       -- 2. قائمة الأعضاء (يسار)
       local listY = headH + 20
@@ -1911,84 +1898,82 @@ local __dcOk, DriveChat = pcall(function()
       ui.drawRectFilled(vec2(15, listY), vec2(leftW, listY + listH), C_PANEL, 10)
       
       local players = getPlayers()
-      dwLeftBox("👥  ("..#players..") الأعضاء", 14, 25, listY + 10, leftW-20, 25, CW)
+      dwBox("👥 ("..#players..") الأعضاء", 14, 15, listY + 10, leftW, 25, CW)
       
-      ui.setCursor(vec2(25, listY + 45)); ui.setNextItemWidth(leftW - 40)
+      ui.setCursor(vec2(25, listY + 45)); ui.setNextItemWidth(leftW - 50)
       ui.pushStyleColor(ui.StyleColor.FrameBg, C_BG)
       memberSearch = ui.inputText("##srch", memberSearch, ui.InputTextFlags.None)
       ui.popStyleColor()
-      dwRightBox("🔍", 12, 25, listY + 45, leftW - 45, 25, CDm)
-      if memberSearch == "" then dwRightBox("ابحث عن عضو...", 13, 30, listY + 45, leftW - 75, 25, CDm) end
+      dwRightBox("🔍", 12, 25, listY + 45, leftW - 60, 25, CDm)
+      if memberSearch == "" then dwRightBox("ابحث عن عضو...", 13, 30, listY + 45, leftW - 90, 25, CDm) end
 
       ui.setCursor(vec2(15, listY + 80))
-      ui.childWindow("##plist", vec2(leftW-5, listH - 85), function()
+      ui.childWindow("##plist", vec2(leftW-5, listH - 90), function()
         for i, p in ipairs(players) do
           if memberSearch == "" or p.name:lower():find(memberSearch:lower()) then
-            ui.setCursor(vec2(10, (i-1)*50))
-            ui.childWindow("##p"..i, vec2(leftW-30, 45), function()
-              drawAvatar(p.name, 0, 2, 35)
-              dwLeftBox(p.name, 13, 45, 2, leftW-80, 20, C_MAIN)
-              ui.drawCircleFilled(vec2(50, 28), 3, C_ON, 10)
-              dwLeftBox("متصل", 11, 58, 20, 50, 16, CDm)
+            ui.setCursor(vec2(10, (i-1)*55))
+            ui.childWindow("##p"..i, vec2(leftW-30, 50), function()
+              drawAvatar(p.name, 0, 5, 40)
+              dwLeftBox(p.name, 13, 50, 5, leftW-80, 20, ACC)
+              ui.drawCircleFilled(vec2(55, 33), 4, C_ON, 10)
+              dwLeftBox("متصل", 11, 65, 25, 50, 16, CDm)
             end)
           end
         end
       end)
-      -- ملاحظة: تم إزالة زر "عرض جميع الأعضاء" بناءً على طلبك
 
       -- 3. منطقة الشات (يمين)
       local chatX = leftW + 25
       local chatW = bw - chatX - 15
       local chatY = headH + 30
-      local inpY = bh - 60
+      local inpY = bh - 80 -- رفعنا المربع شوي عشان نحط الأزرار تحته
 
-      ui.childWindow("##chathist", vec2(chatW, inpY - chatY - 10), function()
+      ui.childWindow("##chathist", vec2(chatW, inpY - chatY - 15), function()
         local yy = 0
         for i, m in ipairs(chatLog) do
-          yy = yy + drawMsgBubble(m, chatW - 15, yy)
+          yy = yy + drawMsgBubble(m, chatW - 20, yy)
         end
-        ui.setCursor(vec2(0, yy + 5)); ui.dummy(vec2(1,1))
+        ui.setCursor(vec2(0, yy + 10)); ui.dummy(vec2(1,1))
         if chatBarJustOpened or #chatLog > chatBarLastCount then ui.setScrollHereY(1); chatBarJustOpened = false end
         chatBarLastCount = #chatLog
       end)
 
-      -- 4. شريط الإدخال والأيقونات (الأسفل)
-      local iconW = 100
-      local txtW = chatW - iconW - 55
+      -- 4. مربع الكتابة
+      local sendW = 60
+      local txtW = chatW - sendW - 10
       
-      -- أيقونات أسفل الشات
-      if iconBtn(chatX, inpY, 35, "😀", "##btn_em", cSt.panel == "emoji") then cSt.panel = cSt.panel == "emoji" and nil or "emoji" end
-      if iconBtn(chatX + 45, inpY, 35, "💬", "##btn_ph", cSt.panel == "phrases") then cSt.panel = cSt.panel == "phrases" and nil or "phrases" end
-
-      -- مربع الكتابة
-      local inpx = chatX + 90
-      ui.setCursor(vec2(inpx, inpY)); ui.setNextItemWidth(txtW)
+      ui.setCursor(vec2(chatX, inpY)); ui.setNextItemWidth(txtW)
       ui.pushStyleColor(ui.StyleColor.FrameBg, C_BG)
-      ui.pushStyleColor(ui.StyleColor.Border, C_MAIN)
+      ui.pushStyleColor(ui.StyleColor.Border, ACC)
       ui.pushStyleVar(ui.StyleVar.FrameBorderSize, 1)
       local nt, changed, entered = ui.inputText("##chatin" .. chatInputGen, chatInput, ui.InputTextFlags.RetainSelection)
       ui.popStyleVar(); ui.popStyleColor(2)
       
       if changed then chatInput = nt end
-      if chatInput == "" then dwRightBox("اكتب رسالتك هنا...", 14, inpx, inpY, txtW - 15, 35, CDm) end
+      if chatInput == "" then dwRightBox("اكتب رسالتك هنا...", 14, chatX, inpY, txtW - 15, 35, CDm) end
 
       -- زر الإرسال
-      local sendX = inpx + txtW + 10
+      local sendX = chatX + txtW + 10
       ui.setCursor(vec2(sendX, inpY))
-      local sendHov = ui.itemHovered()
-      if ui.invisibleButton("##sendBtn", vec2(45, 35)) or (entered and chatInput ~= "") then
+      if ui.invisibleButton("##sendBtn", vec2(sendW, 35)) or (entered and chatInput ~= "") then
         if chatInput ~= "" then
           chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = chatInput, srv = false, mine = true, time = os.date("%H:%M") }
           while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
           pcall(function() ac.sendChatMessage(chatInput) end); chatInput = ""; chatInputGen = chatInputGen + 1; cSt.panel = nil
         end
       end
-      ui.drawRectFilled(vec2(sendX, inpY), vec2(sendX + 45, inpY + 35), C_MAIN, 6)
-      dwBox("➤", 20, sendX, inpY, 45, 35, DK)
+      ui.drawRectFilled(vec2(sendX, inpY), vec2(sendX + sendW, inpY + 35), ui.itemHovered() and rgbm(0.8, 0.5, 0, 1) or ACC, 8)
+      dwBox("➤", 20, sendX, inpY, sendW, 35, DK)
+
+      -- 5. أيقونات الاختصارات (تحت مربع النص)
+      local iconY = inpY + 45
+      if iconBtn(chatX, iconY, 40, 25, "🙂", "##b1", cSt.panel == "emoji") then cSt.panel = cSt.panel == "emoji" and nil or "emoji" end
+      if iconBtn(chatX + 50, iconY, 40, 25, "💬", "##b2", cSt.panel == "phrases") then cSt.panel = cSt.panel == "phrases" and nil or "phrases" end
+      if iconBtn(chatX + 100, iconY, 50, 25, "GIF", "##b3", false) then ac.systemMessage("قريباً", "ميزة الصور المتحركة") end
 
       -- سحب النافذة
       if ui.windowHovered() and ui.mouseDown(ui.MouseButton.Left) and not ui.anyItemActive() and not chatDragging then
-        if ui.mouseLocalPos().y < headH then -- السحب من الهيدر فقط
+        if ui.mouseLocalPos().y < headH then
           chatDragging = true; chatDragStart = ui.mousePos(); chatOfsStart = vec2(cStor.dc_ofsX, cStor.dc_ofsY)
         end
       end
@@ -2002,7 +1987,6 @@ local __dcOk, DriveChat = pcall(function()
     end)
   end
 
-  -- ===== الواجهة العامة =====
   return {
     update = function(dt)
       pulseT = pulseT + dt
@@ -2020,12 +2004,11 @@ local __dcOk, DriveChat = pcall(function()
       sim = sim or ac.getSim()
       if not sim then return end
       local ok, err = pcall(function() drawChatUI(sim) end)
-      if not ok and not cSt.errLogged then cSt.errLogged = true; ac.log("DriveChat draw error: " .. tostring(err)) end
+      if not ok and not cSt.errLogged then cSt.errLogged = true; ac.log("DriveChat Error: " .. tostring(err)) end
     end,
   }
 end)
-if not __dcOk then ac.log("DriveChat load failed."); DriveChat = { update = function() end, draw = function() end } end
-
+if not __dcOk then DriveChat = { update = function() end, draw = function() end } end
 -- لا تنسى إضافة DriveChat.update(dt) و DriveChat.draw() في دوال السكربت المضيف الخاصة بك
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
