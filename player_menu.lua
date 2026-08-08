@@ -2339,6 +2339,18 @@ function script.update(dt)
 
   pcall(function() DriveChat.update(dt) end)
 end
+
+-- =================================================================
+-- إخفاء وتسكير شات أستو كورسا الأصلي إجباري لجميع اللاعبين
+-- =================================================================
+ac.onSessionStart(function ()
+  -- إغلاق نافذة تطبيق الشات الأصلية تلقائياً أول ما يرسبن اللاعب
+  ac.setAppWindowVisible("Chat", false)
+  ac.setAppWindowVisible("chat", false)
+end)
+
+-- إخفاء رسائل الشات اللي تطلع فوق في وسط الشاشة (OSD Chat Messages)
+ac.setUIElementsVisibility(ac.UIElement.ChatMessage, false)
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
 --=================================================================
