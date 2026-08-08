@@ -1638,174 +1638,179 @@ ui.registerOnlineExtra(
 local menuPrevKey = false
 
 --=================================================================
--- [26] DRIVE CHAT  (شات عربي مستقل — زر C)
+-- [26] DRIVE CHAT  (شات عربي مستقل — زر C)
 --=================================================================
 
 -- ============================================================================
---  DRIVE CHAT  —  شات عربي مستقل (بلوك جاهز لللصق)
---  شات AC الأصلي يقلب العربي؛ هذا يعترض الرسائل ويرسمها بنفسه بمحاذاة يمين.
---  ألوان هوية DRIVE (برتقالي/أصفر) + إيموجي أكثر + عبارات سريعة.
+--  DRIVE CHAT  —  شات عربي مستقل (بلوك جاهز لللصق)
+--  شات AC الأصلي يقلب العربي؛ هذا يعترض الرسائل ويرسمها بنفسه بمحاذاة يمين.
+--  ألوان هوية DRIVE (برتقالي/أصفر) + إيموجي أكثر + عبارات سريعة.
 --
---  طريقة التركيب (3 أسطر فقط):
---    1) الصق هذا البلوك كاملاً في أعلى سكربتك (قبل script.update / script.drawUI).
---    2) داخل function script.update(dt)  ضف:   pcall(function() DriveChat.update(dt) end)
---    3) داخل function script.drawUI()      ضف:   DriveChat.draw()
+--  طريقة التركيب (3 أسطر فقط):
+--    1) الصق هذا البلوك كاملاً في أعلى سكربتك (قبل script.update / script.drawUI).
+--    2) داخل function script.update(dt)  ضف:   pcall(function() DriveChat.update(dt) end)
+--    3) داخل function script.drawUI()      ضف:   DriveChat.draw()
 --
---  ❗ مهم: إذا السكربت المضيف عنده شات قديم (ac.onChatMessage خاص فيه)،
---     احذفه أولاً — وإلا كل رسالة تنرسم مرتين.
---  البلوك مغلّف بدالة واحدة، فما يضيف إلا local واحد (DriveChat) — آمن لحد الـ200 local.
+--  ❗ مهم: إذا السكربت المضيف عنده شات قديم (ac.onChatMessage خاص فيه)،
+--     احذفه أولاً — وإلا كل رسالة تنرسم مرتين.
+--  البلوك مغلّف بدالة واحدة، فما يضيف إلا local واحد (DriveChat) — آمن لحد الـ200 local.
 -- ============================================================================
 local __dcOk, DriveChat = pcall(function()
-  -- ===== إعدادات سريعة =====
-  local KEY      = string.byte("C")   -- زر فتح/قفل الشات
-  local ALLOW_TP = false              -- معطل (كان يكرش أحياناً وقت الانتقال للاعب من الشات)
+  -- ===== إعدادات سريعة =====
+  local KEY      = string.byte("C")   -- زر فتح/قفل الشات
+  local ALLOW_TP = false              -- معطل (كان يكرش أحياناً وقت الانتقال للاعب من الشات)
 
-  -- ===== ألوان هوية DRIVE =====
-  local ACC = rgbm(1.00, 0.45, 0.06, 1)   -- برتقالي هوية درايف (COR)
-  local CY  = rgbm(1.00, 0.84, 0.20, 1)   -- أصفر هوية درايف
-  local CW  = rgbm.colors.white
-  local CDm = rgbm(0.66, 0.67, 0.70, 1)
-  local DK  = rgbm(0.04, 0.03, 0.02, 1)
-  local CGR = rgbm(0.35, 0.85, 0.45, 1)
-  local FONT = "Segoe UI;Weight=Bold"
+  -- ===== ألوان هوية DRIVE =====
+  local ACC = rgbm(1.00, 0.45, 0.06, 1)   -- برتقالي هوية درايف (COR)
+  local CY  = rgbm(1.00, 0.84, 0.20, 1)   -- أصفر هوية درايف
+  local CW  = rgbm.colors.white
+  local CDm = rgbm(0.66, 0.67, 0.70, 1)
+  local DK  = rgbm(0.04, 0.03, 0.02, 1)
+  local CGR = rgbm(0.35, 0.85, 0.45, 1)
+  local FONT = "Segoe UI;Weight=Bold"
 
-  -- ===== دوال رسم مساعدة (مستقلة) =====
-  local function dwBox(t, s, x, y, w, h, c)
-    ui.pushDWriteFont(FONT); ui.setCursor(vec2(x, y))
-    ui.dwriteTextAligned(t, s, ui.Alignment.Center, ui.Alignment.Center, vec2(w, h), false, c or CW)
-    ui.popDWriteFont()
-  end
-  local function dwRightBox(t, s, x, y, w, h, c)
-    ui.pushDWriteFont(FONT); ui.setCursor(vec2(x, y))
-    ui.dwriteTextAligned(t, s, ui.Alignment.End, ui.Alignment.Center, vec2(w, h), false, c or CW)
-    ui.popDWriteFont()
-  end
-  local function bigButton(x, y, w, h, label, col, id)
-    ui.setCursor(vec2(x, y))
-    local cl = ui.invisibleButton(id or ("##b" .. label), vec2(w, h))
-    local hov = ui.itemHovered()
-    local c = hov and rgbm(col.r * 1.14, col.g * 1.14, col.b * 1.14, 1) or col
-    ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), c, 10)
-    ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h * 0.5), rgbm(1, 1, 1, 0.10), 10)
-    ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, hov and 0.35 or 0.10), 10, nil, 1)
-    dwBox(label, 15, x, y, w, h, DK)
-    return cl
-  end
+  -- ===== دوال رسم مساعدة (مستقلة) =====
+  local function dwBox(t, s, x, y, w, h, c)
+    ui.pushDWriteFont(FONT); ui.setCursor(vec2(x, y))
+    ui.dwriteTextAligned(t, s, ui.Alignment.Center, ui.Alignment.Center, vec2(w, h), false, c or CW)
+    ui.popDWriteFont()
+  end
+  local function dwRightBox(t, s, x, y, w, h, c)
+    ui.pushDWriteFont(FONT); ui.setCursor(vec2(x, y))
+    ui.dwriteTextAligned(t, s, ui.Alignment.End, ui.Alignment.Center, vec2(w, h), false, c or CW)
+    ui.popDWriteFont()
+  end
+  local function bigButton(x, y, w, h, label, col, id)
+    ui.setCursor(vec2(x, y))
+    local cl = ui.invisibleButton(id or ("##b" .. label), vec2(w, h))
+    local hov = ui.itemHovered()
+    local c = hov and rgbm(col.r * 1.14, col.g * 1.14, col.b * 1.14, 1) or col
+    ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), c, 10)
+    ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h * 0.5), rgbm(1, 1, 1, 0.10), 10)
+    ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, hov and 0.35 or 0.10), 10, nil, 1)
+    dwBox(label, 15, x, y, w, h, DK)
+    return cl
+  end
 
-  -- ===== الحالة =====
-  local pulseT = 0
-  local chatLog = {}
-  local CHAT_MAX = 60
-  local chatBarOpen = false
-  local chatBarJustOpened = false
-  local chatInput = ""
-  local chatInputGen = 0
-  local chatBarLastCount = 0
-  local chatDragging, chatDragStart, chatOfsStart = false, vec2(0, 0), vec2(0, 0)
-  local cSt = { chatMin = false, showPlayers = false, chatReveal = 1 }
-  -- خزن معزول ببادئة dc_ عشان ما يتصادم مع خزن السكربت المضيف
-  local cStor = ac.storage{ dc_opacity = 0.95, dc_w = 760, dc_histH = 186, dc_ofsX = 0, dc_ofsY = 0, dc_emoji = true, dc_phrases = true, dc_rec1 = "😂", dc_rec2 = "👑", dc_rec3 = "🫡", dc_stickers = true }
+  -- ===== الحالة =====
+  -- وقت آمن (بعض إصدارات CSP تشيل os.date)
+  local function nowHM()
+    local ok, r = pcall(function() return nowHM() end)
+    return (ok and r) or ""
+  end
+  local pulseT = 0
+  local chatLog = {}
+  local CHAT_MAX = 60
+  local chatBarOpen = false
+  local chatBarJustOpened = false
+  local chatInput = ""
+  local chatInputGen = 0
+  local chatBarLastCount = 0
+  local chatDragging, chatDragStart, chatOfsStart = false, vec2(0, 0), vec2(0, 0)
+  local cSt = { chatMin = false, showPlayers = false, chatReveal = 1 }
+  -- خزن معزول ببادئة dc_ عشان ما يتصادم مع خزن السكربت المضيف
+  local cStor = ac.storage{ dc_opacity = 0.95, dc_w = 760, dc_histH = 186, dc_ofsX = 0, dc_ofsY = 0, dc_emoji = true, dc_phrases = true, dc_rec1 = "😂", dc_rec2 = "👑", dc_rec3 = "🫡", dc_stickers = true }
 
-  local QUICK_PHRASES = {
-    "عداك العيب", "كفووووو", "ولا شيء يا كنق", "مدارس",
-    "سلام عليكم", "وعليكم السلام", "لعيونك", "لعيونكم",
-  }
-  -- إيموجي موسّعة (الشبكة 13 عمود قابلة للتمرير)
-  local EMOJIS = {
-    "😂","🤣","😅","😆","😊","🙂","🙃","😭","😍","🥰","😘","😗","😙",
-    "😎","😏","😒","😜","😝","🤪","🤔","🤨","🙄","😑","😶","😌","😴",
-    "😪","😤","😡","😠","🤬","😱","😨","😰","😥","😓","🥺","😢","😭",
-    "🤔","🤐","🤥","🤫","🤭","🥱","😋","😛","👍","👎","👌","✌️","🤞",
-    "🤙","🤘","👊","✊","👏","🙌","👐","🙏","💪","🫵","🫶","🤝","✍️",
-    "❤️","🧡","💛","💚","💙","💜","🖤","💔","❣️","💟","💕","💋","💀",
-    "🔥","⭐","🌟","✨","⚡","💥","💨","💯","✅","❌","❗","❓","🎉",
-    "🚗","🏎️","🚓","🚨","🚦","🚥","🛑","🏁","🏆","🥇","👑","🎮","🎵",
-    "👋","🤡","👻","👽","🤖","🎃","👀","🧠","🗣️","💤","💢","🕳️","🔫",
-  }
-  local function useEmoji(em)
-    chatInput = chatInput .. em
-    chatInputGen = chatInputGen + 1
-    local a, b, c = cStor.dc_rec1, cStor.dc_rec2, cStor.dc_rec3
-    if em == a then return end
-    if em == b then cStor.dc_rec1 = em; cStor.dc_rec2 = a; return end
-    if em == c then cStor.dc_rec1 = em; cStor.dc_rec2 = a; cStor.dc_rec3 = b; return end
-    cStor.dc_rec1 = em; cStor.dc_rec2 = a; cStor.dc_rec3 = b
-  end
-  local SERVER_TR = {
-    { "No replay submitted",                    "ما فيه مقطع محفوظ — اضغط Ctrl+Shift+S وقت المخالفة" },
-    { "Replay received",                        "تم حفظ المقطع ✓" },
-    { "Use /report",                            "افتح نافذة الشكوى، اكتب السبب، وأرسل" },
-    { "Please wait a moment before submitting", "استنّى شوي قبل ترفع مقطع ثاني" },
-    { "Your report has been submitted",         "تم إرسال بلاغك ✓ شكراً لك" },
-    { "You have been kicked",                   "تم طردك من السيرفر" },
-    { "You have been banned",                   "تم حظرك من السيرفر" },
-    { "shutting down",                          "⚠️ السيرفر يسوي ريستارت — نرجع خلال ثواني، أعد الدخول 🔄" },
-  }
-  local function translateServer(m)
-    local carN, drv = m:match("^Car (%d+) is now driven by (.+)$")
-    if carN then return "السيارة " .. carN .. " صار يقودها " .. drv end
-    for _, e in ipairs(SERVER_TR) do
-      if m:find(e[1], 1, true) then return e[2] end
-    end
-    return m
-  end
-  local function carByName(nm)
-    if not nm then return nil end
-    local sim = ac.getSim()
-    if not sim then return nil end
-    for i = 0, sim.carsCount - 1 do
-      if ac.getDriverName(i) == nm then return i end
-    end
-    return nil
-  end
-  local function chatTP(car)
-    if not car then return end
-    pcall(function()
-      physics.setCarVelocity(0, vec3(0, 0, 0))
-      physics.setCarPosition(0, car.position - car.look * 6, -car.look, car.up)
-    end)
-  end
+  local QUICK_PHRASES = {
+    "عداك العيب", "كفووووو", "ولا شيء يا كنق", "مدارس",
+    "سلام عليكم", "وعليكم السلام", "لعيونك", "لعيونكم",
+  }
+  -- إيموجي موسّعة (الشبكة 13 عمود قابلة للتمرير)
+  local EMOJIS = {
+    "😂","🤣","😅","😆","😊","🙂","🙃","😭","😍","🥰","😘","😗","😙",
+    "😎","😏","😒","😜","😝","🤪","🤔","🤨","🙄","😑","😶","😌","😴",
+    "😪","😤","😡","😠","🤬","😱","😨","😰","😥","😓","🥺","😢","😭",
+    "🤔","🤐","🤥","🤫","🤭","🥱","😋","😛","👍","👎","👌","✌️","🤞",
+    "🤙","🤘","👊","✊","👏","🙌","👐","🙏","💪","🫵","🫶","🤝","✍️",
+    "❤️","🧡","💛","💚","💙","💜","🖤","💔","❣️","💟","💕","💋","💀",
+    "🔥","⭐","🌟","✨","⚡","💥","💨","💯","✅","❌","❗","❓","🎉",
+    "🚗","🏎️","🚓","🚨","🚦","🚥","🛑","🏁","🏆","🥇","👑","🎮","🎵",
+    "👋","🤡","👻","👽","🤖","🎃","👀","🧠","🗣️","💤","💢","🕳️","🔫",
+  }
+  local function useEmoji(em)
+    chatInput = chatInput .. em
+    chatInputGen = chatInputGen + 1
+    local a, b, c = cStor.dc_rec1, cStor.dc_rec2, cStor.dc_rec3
+    if em == a then return end
+    if em == b then cStor.dc_rec1 = em; cStor.dc_rec2 = a; return end
+    if em == c then cStor.dc_rec1 = em; cStor.dc_rec2 = a; cStor.dc_rec3 = b; return end
+    cStor.dc_rec1 = em; cStor.dc_rec2 = a; cStor.dc_rec3 = b
+  end
+  local SERVER_TR = {
+    { "No replay submitted",                    "ما فيه مقطع محفوظ — اضغط Ctrl+Shift+S وقت المخالفة" },
+    { "Replay received",                        "تم حفظ المقطع ✓" },
+    { "Use /report",                            "افتح نافذة الشكوى، اكتب السبب، وأرسل" },
+    { "Please wait a moment before submitting", "استنّى شوي قبل ترفع مقطع ثاني" },
+    { "Your report has been submitted",         "تم إرسال بلاغك ✓ شكراً لك" },
+    { "You have been kicked",                   "تم طردك من السيرفر" },
+    { "You have been banned",                   "تم حظرك من السيرفر" },
+    { "shutting down",                          "⚠️ السيرفر يسوي ريستارت — نرجع خلال ثواني، أعد الدخول 🔄" },
+  }
+  local function translateServer(m)
+    local carN, drv = m:match("^Car (%d+) is now driven by (.+)$")
+    if carN then return "السيارة " .. carN .. " صار يقودها " .. drv end
+    for _, e in ipairs(SERVER_TR) do
+      if m:find(e[1], 1, true) then return e[2] end
+    end
+    return m
+  end
+  local function carByName(nm)
+    if not nm then return nil end
+    local sim = ac.getSim()
+    if not sim then return nil end
+    for i = 0, sim.carsCount - 1 do
+      if ac.getDriverName(i) == nm then return i end
+    end
+    return nil
+  end
+  local function chatTP(car)
+    if not car then return end
+    pcall(function()
+      physics.setCarVelocity(0, vec3(0, 0, 0))
+      physics.setCarPosition(0, car.position - car.look * 6, -car.look, car.up)
+    end)
+  end
 
-  -- ===== اعتراض الرسائل =====
-  -- ستيكرز (PNG/JPG/GIF): كل العملاء عندهم نفس القائمة، فنرسل رقم الستيكر فقط ($STICK:N)
-  local STICKERS = {
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
-    { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
-    { url = "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif" },
-  }
+  -- ===== اعتراض الرسائل =====
+  -- ستيكرز (PNG/JPG/GIF): كل العملاء عندهم نفس القائمة، فنرسل رقم الستيكر فقط ($STICK:N)
+  local STICKERS = {
+    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
+    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
+    { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
+    { url = "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif" },
+  }
 
-  ac.onChatMessage(function(message, sender)
-    local msg = tostring(message)
-    if msg:find("not an administrator") or msg:find("Unrecognized command") then return true end
-    if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
-    -- كتم ماركرات بروتوكول بلقنات DRIVE (ترافيك/شدّة/رادار) اللي تنتشر بالشات
-    if msg:find("^!TFC_") or msg:find("^!TRAFFIC") or msg:find("^!SHADDA") or msg:find("^!RADAR") then return true end
-    -- ستيكر: "$STICK:<رقم>" — يرسم صورة بدل نص
-    local sidx = msg:match("^%$STICK:(%d+)$")
-    if sidx then
-      if sender == 0 then return true end   -- صدى ستيكرك — مضاف محلياً
-      local st = STICKERS[tonumber(sidx)]
-      if st then
-        local ssrv = not sender or sender < 0
-        local snm = ssrv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
-        chatLog[#chatLog + 1] = { name = snm, sticker = st.url, srv = ssrv, mine = (sender == 0), rawName = (not ssrv) and snm or nil, tm = os.date("%H:%M"), t = pulseT }
-        while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
-      end
-      return true
-    end
-    if sender == 0 then return true end   -- صدى رسالتك — مضافة محلياً عند الإرسال
-    local srv = not sender or sender < 0
-    local nm = srv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
-    chatLog[#chatLog + 1] = { name = nm, text = translateServer(msg), srv = srv, mine = (sender == 0), rawName = (not srv) and nm or nil, tm = os.date("%H:%M"), t = pulseT }
-    while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
-    return true
-  end)
+  ac.onChatMessage(function(message, sender)
+    local msg = tostring(message)
+    if msg:find("not an administrator") or msg:find("Unrecognized command") then return true end
+    if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
+    -- كتم ماركرات بروتوكول بلقنات DRIVE (ترافيك/شدّة/رادار) اللي تنتشر بالشات
+    if msg:find("^!TFC_") or msg:find("^!TRAFFIC") or msg:find("^!SHADDA") or msg:find("^!RADAR") then return true end
+    -- ستيكر: "$STICK:<رقم>" — يرسم صورة بدل نص
+    local sidx = msg:match("^%$STICK:(%d+)$")
+    if sidx then
+      if sender == 0 then return true end   -- صدى ستيكرك — مضاف محلياً
+      local st = STICKERS[tonumber(sidx)]
+      if st then
+        local ssrv = not sender or sender < 0
+        local snm = ssrv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
+        chatLog[#chatLog + 1] = { name = snm, sticker = st.url, srv = ssrv, mine = (sender == 0), rawName = (not ssrv) and snm or nil, tm = nowHM(), t = pulseT }
+        while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+      end
+      return true
+    end
+    if sender == 0 then return true end   -- صدى رسالتك — مضافة محلياً عند الإرسال
+    local srv = not sender or sender < 0
+    local nm = srv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
+    chatLog[#chatLog + 1] = { name = nm, text = translateServer(msg), srv = srv, mine = (sender == 0), rawName = (not srv) and nm or nil, tm = nowHM(), t = pulseT }
+    while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+    return true
+  end)
 
-  chatLog[#chatLog + 1] = { name = "DRIVE", text = "مرحباً بك في سيرفر DRIVE! · اضغط C لإظهار/إخفاء الشات · Enter للإرسال 🧡", srv = true, tm = os.date("%H:%M"), t = 0 }
-  for _, rx in ipairs({ "onnected", "joined the server", "left the server", "has left" }) do
-    pcall(function() ac.blockSystemMessages(rx) end)
-  end
+  chatLog[#chatLog + 1] = { name = "DRIVE", text = "مرحباً بك في سيرفر DRIVE! · اضغط C لإظهار/إخفاء الشات · Enter للإرسال 🧡", srv = true, tm = nowHM(), t = 0 }
+  for _, rx in ipairs({ "onnected", "joined the server", "left the server", "has left" }) do
+    pcall(function() ac.blockSystemMessages(rx) end)
+  end
 
 
 -- ===== رسم الشات (تصميم DRIVE — هيدر متدرّج + قائمة أعضاء + رسائل بأفتار ووقت) =====
@@ -1989,7 +1994,7 @@ local function drawChatBar(sim)
     ui.drawRectFilled(vec2(0, HDR - 16), vec2(W, HDR), rgbm(0.95, 0.44, 0.05, 1), 0)
     ui.drawRectFilled(vec2(0, 0), vec2(W, HDR * 0.5), rgbm(1, 1, 1, 0.10), 16)
     -- شعار DRIVE + عنوان (يسار)
-    ui.pushDWriteFont("Segoe UI;Weight=Black")
+    ui.pushDWriteFont("Segoe UI;Weight=Bold")
     ui.setCursor(vec2(20, 0)); ui.dwriteTextAligned("DRIVE", 26, ui.Alignment.Start, ui.Alignment.Center, vec2(140, HDR), false, DK)
     ui.popDWriteFont()
     dwLeftBox("الشات", 18, 132, 0, 120, HDR, rgbm(0.1, 0.06, 0.02, 1))
@@ -2118,7 +2123,7 @@ local function drawChatBar(sim)
     ui.drawTriangleFilled(vec2(pcx - 9, pcy - 8), vec2(pcx - 9, pcy + 8), vec2(pcx + 10, pcy), DK)
     ui.drawTriangleFilled(vec2(pcx - 9, pcy), vec2(pcx - 9, pcy + 8), vec2(pcx + 2, pcy + 1), rgbm(0, 0, 0, 0.3))
     if (scl or entered) and chatInput ~= "" then
-      chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = chatInput, srv = false, mine = true, tm = os.date("%H:%M"), t = pulseT }
+      chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", text = chatInput, srv = false, mine = true, tm = nowHM(), t = pulseT }
       while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
       pcall(function() ac.sendChatMessage(chatInput) end); chatInput = ""; chatInputGen = chatInputGen + 1
     end
@@ -2194,7 +2199,7 @@ local function drawChatBar(sim)
             ui.setCursor(vec2(sx, 6))
             pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
             if sc then
-              chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, tm = os.date("%H:%M"), t = pulseT }
+              chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, tm = nowHM(), t = pulseT }
               while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
               pcall(function() ac.sendChatMessage("$STICK:" .. i) end)
             end
@@ -2210,58 +2215,58 @@ local function drawChatBar(sim)
   if chatBarOpen and (pulseT - (cSt.chatBarIdle or pulseT)) > 4 then cSt.chatMin = true end
 end
 
-  -- ===== الواجهة العامة =====
-  return {
-    update = function(dt)
-      pulseT = pulseT + dt
-      local canCap = true
-      if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
-      if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
-      local dn = canCap and ui.keyboardButtonDown(KEY)
-      if dn and not cSt.prevKey then
-        chatBarOpen = not chatBarOpen
-        if chatBarOpen then chatBarJustOpened = true; cSt.chatBarIdle = pulseT; cSt.chatMin = false end
-      end
-      cSt.prevKey = dn
-      chatTyping = chatBarOpen   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
-    end,
-    draw = function(sim)
-      sim = sim or ac.getSim()
-      if not sim then return end
-      local ok, err = pcall(function() drawChatLog(sim); drawChatBar(sim) end)
-      if not ok and not cSt.errLogged then cSt.errLogged = true; ac.log("DriveChat draw error: " .. tostring(err)) end
-    end,
-    toggle = function()
-      chatBarOpen = not chatBarOpen
-      if chatBarOpen then chatBarJustOpened = true; cSt.chatBarIdle = pulseT; cSt.chatMin = false end
-    end,
-    isOpen = function() return chatBarOpen end,
-    -- دفع رسالة يدوياً للسجل (اختياري)
-    push = function(name, text, isServer)
-      chatLog[#chatLog + 1] = { name = name, text = text, srv = isServer and true or false, t = pulseT }
-      while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
-    end,
-  }
+  -- ===== الواجهة العامة =====
+  return {
+    update = function(dt)
+      pulseT = pulseT + dt
+      local canCap = true
+      if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
+      if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
+      local dn = canCap and ui.keyboardButtonDown(KEY)
+      if dn and not cSt.prevKey then
+        chatBarOpen = not chatBarOpen
+        if chatBarOpen then chatBarJustOpened = true; cSt.chatBarIdle = pulseT; cSt.chatMin = false end
+      end
+      cSt.prevKey = dn
+      chatTyping = chatBarOpen   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
+    end,
+    draw = function(sim)
+      sim = sim or ac.getSim()
+      if not sim then return end
+      local ok, err = pcall(function() drawChatLog(sim); drawChatBar(sim) end)
+      if not ok and not cSt.errLogged then cSt.errLogged = true; ac.log("DriveChat draw error: " .. tostring(err)) end
+    end,
+    toggle = function()
+      chatBarOpen = not chatBarOpen
+      if chatBarOpen then chatBarJustOpened = true; cSt.chatBarIdle = pulseT; cSt.chatMin = false end
+    end,
+    isOpen = function() return chatBarOpen end,
+    -- دفع رسالة يدوياً للسجل (اختياري)
+    push = function(name, text, isServer)
+      chatLog[#chatLog + 1] = { name = name, text = text, srv = isServer and true or false, t = pulseT }
+      while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
+    end,
+  }
 end)
 if not __dcOk then
-  ac.log("DriveChat load failed: " .. tostring(DriveChat))
-  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end }
+  ac.log("DriveChat load failed: " .. tostring(DriveChat))
+  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end }
 end
 
 function script.update(dt)
-  Core.update(dt)
+  Core.update(dt)
 
-  -- فتح/غلق القائمة
-  local mk = (not isTyping()) and ui.keyboardButtonDown(CFG.MENU_TOGGLE_KEY)
-  if mk and not menuPrevKey then panelOpen = not panelOpen end
-  menuPrevKey = mk
+  -- فتح/غلق القائمة
+  local mk = (not isTyping()) and ui.keyboardButtonDown(CFG.MENU_TOGGLE_KEY)
+  if mk and not menuPrevKey then panelOpen = not panelOpen end
+  menuPrevKey = mk
 
-  boostUpdate(dt)
-  extrasUpdate()
-  rewindUpdate(dt)
-  shaddaUpdate(dt)
+  boostUpdate(dt)
+  extrasUpdate()
+  rewindUpdate(dt)
+  shaddaUpdate(dt)
 
-  pcall(function() DriveChat.update(dt) end)
+  pcall(function() DriveChat.update(dt) end)
 end
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
