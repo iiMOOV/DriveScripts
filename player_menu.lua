@@ -1784,6 +1784,7 @@ local __dcOk, DriveChat = pcall(function()
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
     { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
     { url = "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif" },
+    { url = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHdkam8yZXpsNjE3a2R1ZzJubWYwNnN3aXk1eDFlcWZ4dXpqbDlkbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kn27lnYSAE9O/giphy.gif" },
   }
 
   ac.onChatMessage(function(message, sender)
@@ -2165,7 +2166,7 @@ local function drawChatBar(sim)
     fbtn(pad, 44, "😀", "emoji")
     fbtn(pad + 50, 44, "🖼", "stickers")
     fbtn(pad + 100, 96, "💬 اختصارات", "phrases")
-    fbtn(pad + 200, 52, "▦ التطبيقات", "apps")
+    fbtn(pad + 200, 44, "🧩", "apps")
 
     -- ===== لوحة الإيموجي/الستيكرز/الاختصارات (داخل النافذة فوق الأزرار — تنضغط عادي) =====
     if cSt.panel then
