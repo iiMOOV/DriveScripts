@@ -274,6 +274,7 @@ let ME = "أنت";
 let NOTIFS = true;
 let ADMIN_ENABLED = true;
 let MEMBERS_AT = Date.now();   // وقت آخر تحديث للأعضاء (لتحريك مدة التواجد)
+let MYME = null;               // بياناتي أنا من قائمة الأعضاء (أفتار/رتبة) — تنعرض على رسايلي
 const KNOWN_RANK = {admin:'ADMIN', mod:'MOD', vip:'VIP'};
 const AVC = ['#DB4C3C','#3D85E0','#8757D4','#2E9E8C','#E08924','#578F4C','#CC598C','#5470BD'];
 
@@ -292,9 +293,15 @@ function avatarHTML(m,size){
   return `<div class="av" style="width:${s}px;height:${s}px;background:${m.srv?'#0a0a0c':c}${m.srv?';border:2px solid var(--acc);color:var(--acc)':''};font-size:${Math.round(s*0.38)}px">${m.srv?'D':initials(m.rawName||m.name)}</div>`;
 }
 function esc(t){return (t||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
-function badgeHTML(rank){
+function badgeHTML(rank,color){
   if(!rank) return '';
   const k=String(rank).toLowerCase();
+  if(color&&/^#[0-9a-fA-F]{6}$/.test(color)){
+    // لون الرتبة من البوت — النص أبيض أو غامق حسب فتوحة اللون
+    const r=parseInt(color.slice(1,3),16),g=parseInt(color.slice(3,5),16),b=parseInt(color.slice(5,7),16);
+    const tx=(0.299*r+0.587*g+0.114*b)>150?'#1a1200':'#fff';
+    return `<span class="badge" style="background:${color};color:${tx}">${esc(String(rank).toUpperCase())}</span>`;
+  }
   if(KNOWN_RANK[k]) return `<span class="badge b-${k}">${KNOWN_RANK[k]}</span>`;
   return `<span class="badge b-rank">${esc(String(rank).toUpperCase())}</span>`;
 }
@@ -335,7 +342,7 @@ function renderMembers(){
     const av=avatarHTML({...m,rawName:m.name},40).replace('</div>',`<span class="dot ${m.status||'on'}"></span></div>`);
     const dl=m.discord?'<span class="dlink" title="مرتبط بالديسكورد">🔗</span>':'';
     const sub=m.isMe?'أنت':((m.speed!=null?('💨 '+m.speed+' كم/س'):'متصل'));
-    row.innerHTML=`${av}<div class="mi"><div class="mn">${esc(m.name)} ${dl} ${badgeHTML(m.rank)}</div><div class="ms">${sub}</div></div>`;
+    row.innerHTML=`${av}<div class="mi"><div class="mn">${esc(m.name)} ${dl} ${badgeHTML(m.rank,m.rankColor)}</div><div class="ms">${sub}</div></div>`;
     row.onclick=()=>openProfile(m.name);
     list.appendChild(row);
   });
@@ -357,7 +364,7 @@ function refreshProfile(){
   const m=memberByName(PROF_NAME);
   if(!m){closeProfile();return;}
   document.getElementById('profav').innerHTML=avatarHTML({...m,rawName:m.name},64);
-  document.getElementById('profname').innerHTML=`${esc(m.name)} ${m.isMe?'<span style="color:var(--mut);font-size:13px">(أنت)</span>':''} ${badgeHTML(m.rank)}`;
+  document.getElementById('profname').innerHTML=`${esc(m.name)} ${m.isMe?'<span style="color:var(--mut);font-size:13px">(أنت)</span>':''} ${badgeHTML(m.rank,m.rankColor)}`;
   const d=document.getElementById('profdisc');
   if(m.discord){d.textContent=(typeof m.discord==='string')?('مرتبط ✓ '+m.discord):'مرتبط ✓';d.className='cv ok';}
   else{d.textContent='غير مرتبط ✗';d.className='cv no';}
@@ -421,7 +428,7 @@ function addMessage(m){
     row.innerHTML=`<div class="mbody"><div class="mhead"><span class="mname" style="cursor:default">DRIVE SYSTEM</span><span class="mtime">${time}</span></div><div class="bub">${inner}</div></div>`;
   }else{
     row.innerHTML=`<div class="mav">${avatarHTML(m,40)}</div>
-      <div class="mbody"><div class="mhead"><span class="mname">${esc(m.name)}</span>${badgeHTML(m.rank)}<span class="mtime">${time}</span></div>
+      <div class="mbody"><div class="mhead"><span class="mname">${esc(m.name)}</span>${badgeHTML(m.rank,m.rankColor)}<span class="mtime">${time}</span></div>
       <div class="bub">${inner}</div></div>`;
     const nm=row.querySelector('.mname');
     if(nm && !m.mine) nm.onclick=()=>openProfile(m.rawName||m.name);
@@ -432,14 +439,19 @@ function addMessage(m){
 }
 
 /* ---------- send ---------- */
+function myMsg(extra){
+  const b={name:ME,mine:true,time:now()};
+  if(MYME){ b.avatar=MYME.avatar||undefined; b.rank=MYME.rank||undefined; b.rankColor=MYME.rankColor||undefined; b.rawName=MYME.name; }
+  return Object.assign(b,extra);
+}
 function doSend(){
   const i=document.getElementById('msgin');const t=i.value.trim();
   if(!t)return;
-  if(!t.startsWith('/')) addMessage({name:ME,text:t,mine:true,time:now()});   // الأوامر (/link ...) ما تنعرض كرسالة
+  if(!t.startsWith('/')) addMessage(myMsg({text:t}));   // الأوامر (/link ...) ما تنعرض كرسالة
   sendToLua('send:'+t);
   i.value='';i.focus();
 }
-function sendSticker(url){ addMessage({name:ME,sticker:url,mine:true,time:now()}); sendToLua('stick:'+url); togglePanel(curPanel); }
+function sendSticker(url){ addMessage(myMsg({sticker:url})); sendToLua('stick:'+url); togglePanel(curPanel); }
 
 /* ---------- picker panel ---------- */
 let curPanel=null;
@@ -454,7 +466,7 @@ function togglePanel(k){
   else if(k==='phr'){p.innerHTML='<div class="pgrid">'+PHRASES.map(t=>`<button onclick="phr('${t}')">${t}</button>`).join('')+'</div>';}
 }
 function ins(e){const i=document.getElementById('msgin');i.value+=e;i.focus();}
-function phr(t){addMessage({name:ME,text:t,mine:true,time:now()});sendToLua('send:'+t);togglePanel('phr');}
+function phr(t){addMessage(myMsg({text:t}));sendToLua('send:'+t);togglePanel('phr');}
 
 /* ---------- keyboard ---------- */
 /* الشات المفتوح = وضع كتابة كامل (الكيبورد كله للشات) — الإغلاق: ESC أو ✕ أو كليك برا النافذة */
@@ -464,9 +476,9 @@ function phr(t){addMessage({name:ME,text:t,mine:true,time:now()});sendToLua('sen
    ============================================================ */
 /* الأسماء كلها بادئة dc — عشان نقدر نعرّفها كدوال عالمية بأمان بدون ما نكسر window.focus/blur */
 const HANDLERS = {
-  dcMessage: (m)=>{ m=m||{}; addMessage({...m, text:(m.text===false?undefined:m.text), sticker:(m.sticker===false?undefined:m.sticker), avatar:(m.avatar===false?undefined:m.avatar)}); },
+  dcMessage: (m)=>{ m=m||{}; addMessage({...m, text:(m.text===false?undefined:m.text), sticker:(m.sticker===false?undefined:m.sticker), avatar:(m.avatar===false?undefined:m.avatar), rankColor:(m.rankColor===false?undefined:m.rankColor)}); },
   dcClear:   ()=>{msgsEl.innerHTML='';},
-  dcMembers: (list)=>{MEMBERS=list||[];MEMBERS_AT=Date.now();renderMembers();refreshProfile();},
+  dcMembers: (list)=>{MEMBERS=list||[];MEMBERS_AT=Date.now();MYME=MEMBERS.find(m=>m.isMe)||MYME;renderMembers();refreshProfile();},
   dcStickers:(list)=>{if(list&&list.length)STICKERS=list;},
   dcGifs:    (list)=>{if(list&&list.length)GIFS=list;},
   dcInit:    (d)=>{
