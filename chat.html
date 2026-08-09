@@ -441,6 +441,8 @@ function phr(t){addMessage({name:ME,text:t,mine:true,time:now()});sendToLua('sen
 function isEditable(el){return el&&(el.tagName==='INPUT'&&el.type!=='range'||el.tagName==='TEXTAREA');}
 document.addEventListener('focusin',e=>{ if(isEditable(e.target)) sendToLua('kbd:1'); });
 document.addEventListener('focusout',()=>{ setTimeout(()=>{ if(!isEditable(document.activeElement)) sendToLua('kbd:0'); },0); });
+/* نبض كل 400ms — يضمن إن Lua دايم عارف حالة الفوكس حتى لو فات حدث */
+setInterval(()=>{ sendToLua('kbd:'+(isEditable(document.activeElement)?'1':'0')); },400);
 
 /* ============================================================
    Lua -> JS  (browser:sendAsync('EVENT', data))
