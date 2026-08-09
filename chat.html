@@ -169,12 +169,12 @@ body{display:flex;align-items:center;justify-content:center}
 /* ============================================================
    DRIVE CHAT — front-end
    يتصل بـ Lua عبر:  Lua→JS: browser:sendAsync('EVENT', data)
-                     JS→Lua: AC.send('iddlchat', 'command:...')
+                     JS→Lua: AC.send('Drivechat', 'command:...')
    ============================================================ */
 
 /* ---------- CSP bridge (JS -> Lua) ---------- */
 function sendToLua(msg){
-  try{ if(window.AC && AC.send){ AC.send('iddlchat', String(msg)); return; } }catch(e){}
+  try{ if(window.AC && AC.send){ AC.send('Drivechat', String(msg)); return; } }catch(e){}
   try{ if(window.external && window.external.invoke){ window.external.invoke(String(msg)); } }catch(e){}
 }
 
