@@ -1779,12 +1779,11 @@ local __dcOk, DriveChat = pcall(function()
 
   -- ===== اعتراض الرسائل =====
   -- ستيكرز (PNG/JPG/GIF): كل العملاء عندهم نفس القائمة، فنرسل رقم الستيكر فقط ($STICK:N)
+  -- استخدم روابط صور مباشرة فقط (تنتهي بـ .png/.jpg/.gif). جوجل gstatic ما يشتغل.
   local STICKERS = {
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
-    { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
-    { url = "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif" },
     { url = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHdkam8yZXpsNjE3a2R1ZzJubWYwNnN3aXk1eDFlcWZ4dXpqbDlkbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kn27lnYSAE9O/giphy.gif" },
+    { url = "https://i.imgur.com/WOV2nwa.png" },
+    { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
   }
 
   ac.onChatMessage(function(message, sender)
@@ -1900,7 +1899,12 @@ local function drawMsgRow(m, ix, x, areaW, yy, a, interactive)
     ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), rgbm(0.15, 0.15, 0.17, 0.96 * a), 12)
     ui.drawRectFilled(vec2(bx2 - 3, bubY + 4), vec2(bx2, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.95 * a), 2)
     if m.sticker then
-      pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
+      if ui.isImageReady(m.sticker) then
+        pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
+      else
+        pcall(function() ui.decodeImage(m.sticker) end)
+        ui.drawRectFilled(vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104), rgbm(0.16, 0.16, 0.19, 1), 8)
+      end
     else
       ui.setCursor(vec2(bx1 + 12, bubY + 8))
       ui.dwriteTextAligned(m.text or "", 15, ui.Alignment.End, ui.Alignment.Start, vec2(innerW, contentH), true, rgbm(1, 1, 1, a))
@@ -1917,7 +1921,12 @@ local function drawMsgRow(m, ix, x, areaW, yy, a, interactive)
     ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), m.srv and rgbm(0.11, 0.115, 0.14, 0.96 * a) or rgbm(0.17, 0.17, 0.19, 0.96 * a), 12)
     if m.srv then ui.drawRectFilled(vec2(bx1, bubY + 4), vec2(bx1 + 3, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * a), 2) end
     if m.sticker then
-      pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
+      if ui.isImageReady(m.sticker) then
+        pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
+      else
+        pcall(function() ui.decodeImage(m.sticker) end)
+        ui.drawRectFilled(vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104), rgbm(0.16, 0.16, 0.19, 1), 8)
+      end
     else
       ui.setCursor(vec2(bx1 + 12, bubY + 8))
       ui.dwriteTextAligned(m.text or "", 15, ui.Alignment.End, ui.Alignment.Start, vec2(innerW, contentH), true, m.srv and rgbm(CY.r, CY.g, CY.b, a) or rgbm(1, 1, 1, a))
@@ -2234,8 +2243,12 @@ local function drawChatBar(sim)
             ui.setCursor(vec2(sx, sy))
             local sc = ui.invisibleButton("##st" .. i, vec2(ssz, ssz))
             ui.drawRectFilled(vec2(sx, sy), vec2(sx + ssz, sy + ssz), rgbm(0.16, 0.16, 0.19, 1), 8)
-            dwBox("🖼", 24, sx, sy, ssz, ssz, rgbm(1, 1, 1, 0.22))
-            pcall(function() ui.drawImage(st.url, vec2(sx, sy), vec2(sx + ssz, sy + ssz)) end)
+            if ui.isImageReady(st.url) then
+              pcall(function() ui.drawImage(st.url, vec2(sx, sy), vec2(sx + ssz, sy + ssz)) end)
+            else
+              pcall(function() ui.decodeImage(st.url) end)
+              dwBox("⏳", 22, sx, sy, ssz, ssz, rgbm(1, 1, 1, 0.3))
+            end
             if ui.itemHovered() then ui.drawRect(vec2(sx, sy), vec2(sx + ssz, sy + ssz), rgbm(ACC.r, ACC.g, ACC.b, 0.8), 8, nil, 2) end
             if sc then
               chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, tm = nowHM(), t = pulseT }
