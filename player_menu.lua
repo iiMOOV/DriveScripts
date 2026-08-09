@@ -1577,7 +1577,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE ©", 10, 0, H - 22, NAV, 12, CDm)
+  dwBox("DRIVE © v4.1", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1664,7 +1664,8 @@ local function drawMenuHost()
   end
   px = math.max(0, math.min(sim.windowWidth - 80, px))
   py = math.max(0, math.min(sim.windowHeight - 60, py))
-  ui.transparentWindow("driveMenuHost", vec2(px, py), vec2(W, H), function()
+  -- (true, true) = بدون حواف + استقبال الضغطات — بدونها الأزرار داخل النافذة ما تستجيب
+  ui.transparentWindow("driveMenuHost", vec2(px, py), vec2(W, H), true, true, function()
     panelBody()
     local mlp = ui.mouseLocalPos()
     -- سحب من الشريط العلوي (ما عدا زر الإغلاق يمين)
@@ -1859,6 +1860,32 @@ local __dcOk, DriveChat = pcall(function()
     end)
   end
 
+  -- ===== الربط الآمن مع الديسكورد (/link داخل الشات) =====
+  -- الفكرة: الكود يتولد داخل اللعبة ويظهر لك أنت فقط، وترسله بالديسكورد !verify
+  -- كذا مستحيل أحد يربط اسمك بحسابه — لأن الكود ما يظهر إلا على شاشتك.
+  local function sysMsg(t)
+    local m = { name = "DRIVE", text = t, srv = true, t = S.clock }
+    pushLog(m); toBrowser(m)
+  end
+  local function startDiscordLink()
+    if RANKS_URL == "" then sysMsg("نظام الربط غير مفعّل حالياً — كلم الإدارة"); return end
+    sysMsg("⏳ جاري طلب كود الربط...")
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local code = tostring(math.random(100000, 999999))
+    local steam = ""
+    pcall(function() steam = ac.getUserSteamID() or "" end)
+    local body = '{"name":' .. jsonStr(myName()) .. ',"steam":' .. jsonStr(steam) .. ',"code":' .. jsonStr(code) .. '}'
+    pcall(function()
+      web.post(base .. '/drive/linkcode', { ['Content-Type'] = 'application/json' }, body, function(err)
+        if err then
+          sysMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
+        else
+          sysMsg("🔗 كود الربط حقك: " .. code .. " — ارسل بروم الديسكورد: !verify " .. code .. " (صالح ١٠ دقايق، لا تعطيه أحد)")
+        end
+      end)
+    end)
+  end
+
   -- ===== الرتب / الربط من البوت =====
   local function fetchRanks()
     if RANKS_URL == "" then return end
@@ -1899,6 +1926,12 @@ local __dcOk, DriveChat = pcall(function()
     if data:sub(1, 5) == 'send:' then
       local msg = data:sub(6)
       if msg == '' then return end
+      -- أمر الربط: /link — ما ينرسل للشات العام، بس يولد كود التحقق
+      local ml = msg:lower()
+      if ml == '/link' or ml == '/ربط' or ml == 'link/' then
+        startDiscordLink()
+        return
+      end
       ownMsg(msg, nil)
       pcall(function() ac.sendChatMessage(msg) end)
       relayChatLog(msg)
@@ -2438,7 +2471,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded")
+ac.log("DRIVE Panel loaded (v4.1 — chat bridge + menu host + /link)")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
