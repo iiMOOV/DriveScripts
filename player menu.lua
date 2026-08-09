@@ -26,6 +26,7 @@
 --    [26] DRIVE CHAT .......... HTML chat (browser + Discord bridge)
 --    [27] ONLINE EXTRAS ....... optional toolbar buttons
 --    [28] MENU HOST ........... always-on menu (works without extras)
+--    [29] DRIVE TAGS .......... name tags above cars (name + rank badge)
 --
 --  RULE: every feature block owns its own state, logic and UI.
 --  To change one feature, edit only its block.
@@ -1577,7 +1578,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE ©", 10, 0, H - 22, NAV, 12, CDm)
+  dwBox("DRIVE © v4.4", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1820,6 +1821,7 @@ local __dcOk, DriveChat = pcall(function()
       name = m.name, rawName = m.name, text = m.text or false, sticker = m.sticker or false,
       srv = m.srv or false, mine = m.mine or false,
       rank = (m.srv and "") or rankOf(m.name),
+      rankColor = (r and r.color) or false,
       avatar = (r and r.avatar) or false,
       discord = (r and r.discord) or false,
     })
@@ -1869,6 +1871,7 @@ local __dcOk, DriveChat = pcall(function()
   end
   local function startDiscordLink()
     if RANKS_URL == "" then sysMsg("نظام الربط غير مفعّل حالياً — كلم الإدارة"); return end
+    sysMsg("⏳ جاري طلب كود الربط...")
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
     local code = tostring(math.random(100000, 999999))
     local steam = ""
@@ -1879,7 +1882,7 @@ local __dcOk, DriveChat = pcall(function()
         if err then
           sysMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
         else
-          sysMsg("🔗 كود الربط حقك: " .. code .. " — ارسل بروم الديسكورد: !verify " .. code .. " (صالح ١٠ دقايق، لا تعطيه أحد)")
+          sysMsg("🔗 كود الربط حقك: " .. code .. " — ارسله بالخاص لبوت الديسكورد، أو بأي روم: !verify " .. code .. " (صالح ١٠ دقايق، لا تعطيه أحد)")
         end
       end)
     end)
@@ -1997,6 +2000,7 @@ local __dcOk, DriveChat = pcall(function()
     if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
     -- كتم ماركرات بروتوكول بلقنات DRIVE (ترافيك/شدّة/رادار)
     if msg:find("^!TFC_") or msg:find("^!TRAFFIC") or msg:find("^!SHADDA") or msg:find("^!RADAR") then return true end
+    if msg:find("Slot %[") or msg:find("is not configured") then return true end   -- سبام إعدادات السيرفر
     if sender == 0 then return true end   -- صدى رسالتك — الصفحة عرضتها من قبل
     local sidx = msg:match("^%$STICK:(%d+)$")
     if sidx then
@@ -2185,6 +2189,27 @@ local __dcOk, DriveChat = pcall(function()
       pcall(function() handleTitle(S.browser:title() or '') end)
     end
 
+    -- إخفاء شات AC الأصلي (نفس طريقة IDDL): نلقى نافذته ونخفيها ونصغّرها ونطلعها برا الشاشة
+    -- ويعاد التطبيق كل ٥ ثواني عشان لو اللعبة رجعتها
+    pcall(function()
+      if not S.vanillaWin then
+        if now - (S.vanillaTry or -10) < 3 then return end
+        S.vanillaTry = now
+        for _, nm in ipairs({ 'Chat', 'chat', 'AC_CHAT', 'ac_chat', 'CHAT' }) do
+          local w = ac.accessAppWindow(nm)
+          if w and w:valid() then S.vanillaWin = w; break end
+        end
+      end
+      local w = S.vanillaWin
+      if w and w:valid() and (not S.vanillaHidden or now >= (S.vanillaAt or 0)) then
+        w:setVisible(false)
+        w:resize(vec2(1, 1))
+        w:move(vec2(99999, 99999))
+        S.vanillaHidden = true
+        S.vanillaAt = now + 5
+      end
+    end)
+
     -- لو الصفحة جهزت وما وصلنا تأكيد إن sendAsync توصلها — نتحول تلقائياً لوضع الطوارئ
     if S.browser and S.ready and S.initSent and not S.acked and not S.jsMode and (now - S.readyAt) > 3 then
       S.jsMode = true
@@ -2249,6 +2274,7 @@ local __dcOk, DriveChat = pcall(function()
             list[#list + 1] = {
               name = nm, isMe = (i == 0), status = 'on',
               rank = rankOf(nm),
+              rankColor = (r and r.color) or false,
               discord = (r and r.discord) or false,
               avatar = (r and r.avatar) or nil,
               car = carName,
@@ -2366,6 +2392,14 @@ local __dcOk, DriveChat = pcall(function()
       if S.open then closeChat() else openChat() end
     end,
     isOpen = function() return S.open end,
+    -- معلومات رتبة لاعب (يستخدمها بلوك التاقات [29]): {rank, color, discord, avatar} أو nil
+    getRank = function(name)
+      local r = S.ranks[name]
+      if r and r.rank and r.rank ~= '' then return r end
+      local fr = ADMIN_NAMES[name]
+      if fr then return { rank = fr } end
+      return nil
+    end,
     push = function(name, text, isServer)
       local m = { name = name, text = text, srv = isServer and true or false, t = S.clock }
       pushLog(m); toBrowser(m)
@@ -2374,7 +2408,814 @@ local __dcOk, DriveChat = pcall(function()
 end)
 if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
-  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end }
+  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
+end
+
+--=================================================================
+-- [29] DRIVE TAGS  (أسماء اللاعبين فوق السيارات — DRIVE Community)
+--   محرك التاقات كامل كما هو (كاش، تلاشي بالمسافة، أعلام) —
+--   التعديل الوحيد: بادج الرتبة (من نظام الربط /link) مكان البنق.
+--   ملاحظة ١: "أسماء السائقين" لازم مفعلة من إعدادات AC عشان تشتغل.
+--   ملاحظة ٢: أي تطبيق تاقات ثاني عند اللاعب (بنسخته المحلية) لازم يتعطل
+--             — نظامين تاقات مع بعض = أسماء متخلبطة/متبادلة.
+--=================================================================
+local __dtOk, DriveTags = pcall(function()
+
+-- DRIVE Driver Tags — نفس محرك التاقات المجرّب، بهوية DRIVE + رتبة الربط مكان البنق
+
+local sim = ac.getSim()
+
+local crispyDriverTagDefaults = {
+    tagsDisabled              = false,
+    advancedSettings          = false,
+    storedTagWidth            = 1024,
+    storedTagHeight           = 120,
+
+    pitVisible                = true,
+    showFlag                  = true,
+    showPing                  = true,
+    flagSize                  = 46,
+    pingSize                  = 24,
+
+    tagsDistance              = 150,
+
+    nearFadeStart             = 0.76,
+    nearFadeEnd               = 0.96,
+    nearFadeMin               = 0.00,
+
+    midDistance               = 0.75,
+    hiddenDistance            = 0.40,
+
+    fontType                  = 'Verdana:@System',
+    fontSizeV                 = 40,
+    outlineThickness          = 5,
+
+    useDriverTagsColor        = true,
+    useDriverTagsColorOutline = false,
+
+    boxEnabled                = true,
+    boxPaddingX               = 12,
+    boxPaddingY               = 6,
+    boxRadius                 = 12,
+    fadingCloseToggle         = true,
+
+}
+
+local crispyServerBlacklist = { serverBlacklistRaw = "" }
+
+local default_colors = {
+    boxColor     = rgbm(0.0, 0.0, 0.0, 0.96),
+    outlineColor = rgbm(0.0, 0.0, 0.0, 0.92),
+    textColor    = rgbm(0.90, 0.90, 0.90, 1.00),
+}
+
+local st = ac.storage(crispyDriverTagDefaults)
+local srv = ac.storage(crispyServerBlacklist)
+local dc = ac.storage(default_colors)
+
+local inited = false
+
+local lastTagW = st.storedTagWidth
+local lastTagH = st.storedTagHeight
+local lastDistance = st.tagsDistance
+
+local lastFont = st.fontType
+
+local tagsDirty = true
+local tagsDirtyTimer = 0
+
+local lastValidated = {
+    nearFadeStart = st.nearFadeStart,
+    nearFadeEnd = st.nearFadeEnd,
+    midDistance = st.midDistance,
+    hiddenDistance = st.hiddenDistance
+}
+
+local carCache = {}
+local textMeasureCache = {}
+
+local function ResetColors()
+    for k, v in pairs(default_colors) do
+        dc[k] = v
+    end
+    dc.boxColor     = rgbm(0.0, 0.0, 0.0, 0.96)
+    dc.outlineColor = rgbm(0.0, 0.0, 0.0, 0.92)
+    dc.textColor    = rgbm(0.90, 0.90, 0.90, 1.00)
+end
+
+local function clamp01(x)
+    return math.clamp(x, 0, 1)
+end
+
+local function smoothstep(a, b, x)
+    if a == b then return x >= b and 1 or 0 end
+    x = clamp01((x - a) / (b - a))
+    return x * x * (3 - 2 * x)
+end
+
+local function measureDWrite(text, size)
+    if ui.measureDWriteText then return ui.measureDWriteText(text, size) end
+    if ui.measureText then return ui.measureText(text, size) end
+    return vec2(#text * size * 0.55, size * 1.2)
+end
+
+local function clearTextMeasureCache()
+    textMeasureCache = {}
+end
+
+local function clearCarCache()
+    carCache = {}
+end
+
+local function measureCached(text, size)
+    local key = st.fontType .. '|' .. tostring(size) .. '|' .. text
+    local v = textMeasureCache[key]
+    if v then return v end
+    v = measureDWrite(text, size)
+    textMeasureCache[key] = v
+    return v
+end
+
+local function validateSettings() -- performance loss here
+    st.midDistance    = math.clamp(st.midDistance, 0.25, 1.0)
+    st.hiddenDistance = math.clamp(st.hiddenDistance, 0.25, 1.0)
+
+    if st.midDistance < st.hiddenDistance then
+        st.hiddenDistance = st.midDistance
+    end
+
+    st.nearFadeStart = math.clamp(st.nearFadeStart, 0.25, 1.0)
+    st.nearFadeEnd   = math.clamp(st.nearFadeEnd, 0.25, 1.0)
+
+    if st.nearFadeEnd < st.nearFadeStart then
+        st.nearFadeEnd = st.nearFadeStart
+    end
+end
+
+local function validationInputsChanged()
+    return
+        st.nearFadeStart ~= lastValidated.nearFadeStart or
+        st.nearFadeEnd ~= lastValidated.nearFadeEnd or
+        st.midDistance ~= lastValidated.midDistance or
+        st.hiddenDistance ~= lastValidated.hiddenDistance
+end
+
+local function storeValidatedSnapshot()
+    lastValidated.nearFadeStart = st.nearFadeStart
+    lastValidated.nearFadeEnd = st.nearFadeEnd
+    lastValidated.midDistance = st.midDistance
+    lastValidated.hiddenDistance = st.hiddenDistance
+end
+
+local function markTagsDirty()
+    tagsDirty = true
+    tagsDirtyTimer = 0.10
+end
+
+local function splitString(input, separator)
+    local result = {}
+    if not input or input == "" then return result end
+
+    for part in string.gmatch(input, "([^" .. separator .. "]+)") do
+        result[#result + 1] = part
+    end
+
+    return result
+end
+
+local function loadServerBlacklist()
+    local entries = {}
+    local raw = srv.serverBlacklistRaw or ""
+
+    for _, item in ipairs(splitString(raw, "\n")) do
+        local key, name = item:match("^(.-)|(.+)$")
+        if key and name then
+            entries[#entries + 1] = {
+                key = key,
+                name = name
+            }
+        elseif item ~= "" then
+            entries[#entries + 1] = {
+                key = item,
+                name = item
+            }
+        end
+    end
+
+    return entries
+end
+
+local function saveServerBlacklist(list)
+    local lines = {}
+
+    for i = 1, #list do
+        local key = list[i].key or ""
+        local name = list[i].name or key
+        lines[#lines + 1] = key .. "|" .. name
+    end
+
+    srv.serverBlacklistRaw = table.concat(lines, "\n")
+end
+
+local function getCurrentServerKey()
+    local ip = ac.getServerIP() or ""
+    local port = ac.getServerPortHTTP() or 0
+
+    if ip == "" or port == 0 then
+        return nil
+    end
+
+    return string.format("%s:%s", ip, port)
+end
+
+-- local function getCurrentServerDisplay()
+--     local name = ac.getServerName() or "Unknown Server"
+--     local key = getCurrentServerKey() or "N/A"
+--     return string.format("%s (%s)", name, key)
+-- end
+
+local function isCurrentServerBlacklisted()
+    local key = getCurrentServerKey()
+    if not key then return false end
+
+    local blacklist = loadServerBlacklist()
+    for i = 1, #blacklist do
+        if blacklist[i].key == key then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function addCurrentServerToBlacklist()
+    local key = getCurrentServerKey()
+    if not key then return end
+
+    local blacklist = loadServerBlacklist()
+
+    for i = 1, #blacklist do
+        if blacklist[i].key == key then
+            return
+        end
+    end
+
+    blacklist[#blacklist + 1] = {
+        key = key,
+        name = ac.getServerName() or key
+    }
+
+    saveServerBlacklist(blacklist)
+    markTagsDirty()
+end
+
+local function removeBlacklistedServer(index)
+    local blacklist = loadServerBlacklist()
+    if not blacklist[index] then return end
+
+    table.remove(blacklist, index)
+    saveServerBlacklist(blacklist)
+    markTagsDirty()
+end
+
+local function formatPing(ping)
+    if not ping or ping <= 0 then
+        return "", rgbm(1, 1, 1, 1)
+    end
+
+    local color = rgbm(1, 1, 1, 1)
+    local emoji = "•" -- PING ICON HERE
+
+    if ping > 200 then
+        emoji = "⚠️"
+        color = rgbm(1, 0, 0, 1)
+    elseif ping > 165 then
+        emoji = "⚠️"
+        color = rgbm(1, 0.25, 0, 1)
+    elseif ping > 135 then
+        emoji = "•"
+        color = rgbm(1, 0.5, 0, 1)
+    elseif ping > 100 then
+        emoji = "•"
+        color = rgbm(1, 0.75, 0, 1)
+    elseif ping > 80 then
+        color = rgbm(1, 1, 0, 1)
+    elseif ping > 50 then
+        color = rgbm(1, 1, 0.5, 1)
+    end
+
+    return string.format("%s %dms", emoji, ping), color
+end
+
+local function _unpackRGB(c)
+    if not c then return nil end
+    local r = c.r or c.x or c[1]
+    local g = c.g or c.y or c[2]
+    local b = c.b or c.z or c[3]
+    if r and g and b then return r, g, b end
+    return nil
+end
+
+local function buildFlagPath(code)
+    if not code or code == "" then return nil end
+    if code == "PLA" then code = "AC" end
+    return "/content/gui/NationFlags/" .. string.upper(code) .. ".png"
+end
+
+local KNOWN_TAG_ICONS = {
+    STREAMER = { image = "/img/twitch-ico.png" },
+    COOL_KID = { image = "/img/discord-ico.png" },
+    ADMIN = { image = "/img/admin-ico.png" },
+    TTV = { alias = "STREAMER" },
+    DRIFT_KING = { alias = "COOL_KID" },
+    BAD_DRIVER = { alias = "COOL_KID" },
+    ANGLE_MASTER = { alias = "COOL_KID" },
+    -- TEAM = { image = "imgpath", scale = 1.0 , w = 50 , h = 40 },
+}
+
+local function trim(s)
+    return (s and s:match("^%s*(.-)%s*$")) or ""
+end
+
+local function normalizeTagKey(tag)
+    return (tag or ''):upper():gsub('^%s+', ''):gsub('%s+$', ''):gsub('[%s%-]+', '_'):gsub('[^%w_]', '')
+end
+
+local function resolveTagIconDefinition(tagKey)
+    local def = KNOWN_TAG_ICONS[tagKey]
+    if def and def.alias then
+        def = KNOWN_TAG_ICONS[def.alias]
+    end
+    if not def then return nil end
+
+    if type(def) == 'string' then
+        return { kind = 'text', text = def }
+    end
+
+    if type(def) ~= 'table' then return nil end
+
+    if def.text and def.text ~= '' then
+        return {
+            kind = 'text',
+            text = def.text,
+            scale = def.scale
+        }
+    end
+
+    if def.image and def.image ~= '' then
+        return {
+            kind = 'image',
+            path = def.image,
+            w = def.w,
+            h = def.h,
+            scale = def.scale
+        }
+    end
+
+    return nil
+end
+
+local function getIconItemSize(icon, nameSizePx)
+    if not icon then return 0, 0 end
+    if icon.kind == 'text' then
+        local scale = icon.scale or 1.0
+        local textSizePx = math.max(1, math.floor(nameSizePx * scale + 0.5))
+        local size = measureCached(icon.text or '', textSizePx)
+        return size.x, size.y, textSizePx
+    end
+
+    local scale = icon.scale or 1.0
+    local base = math.max(1, math.floor(nameSizePx * scale + 0.5))
+    local w = icon.w or base
+    local h = icon.h or base
+    return w, h, nil
+end
+
+local function parseDriverName(rawName)
+    local iconItems = {}
+
+    local cleaned = (rawName or ''):gsub('%b[]', function(tagBlock)
+        local inner = trim(tagBlock:sub(2, -2))
+        local tagKey = normalizeTagKey(inner)
+        local iconDef = resolveTagIconDefinition(tagKey)
+
+        if iconDef then
+            iconItems[#iconItems + 1] = iconDef
+            return ''
+        end
+
+        return tagBlock
+    end)
+
+    cleaned = trim(cleaned):gsub('%s+', ' ')
+
+    return {
+        rawName = rawName or '',
+        displayName = cleaned,
+        iconItems = iconItems
+    }
+end
+
+local function getCarCache(index)
+    local c = carCache[index]
+    if c then return c end
+
+    local name = ac.getDriverName(index) or ""
+    local nationCode = ac.getDriverNationCode(index)
+    local tagColor = nil
+
+    if name ~= "" and ac.DriverTags then
+        local tags = ac.DriverTags(name)
+        if tags and tags.color then
+            local r, g, b = _unpackRGB(tags.color)
+            if r and g and b then
+                tagColor = rgbm(r, g, b, 1)
+            end
+        end
+    end
+
+    local parsedName = parseDriverName(name)
+    local rawName = parsedName.rawName
+    local cleanName = parsedName.displayName
+    local nation = nationCode
+
+    local hash = ac.checksumSHA256(cleanName .. nation)
+
+    if hash == "d02359554bb46f56c0ebd63f7c6ec063a198c0e107a11cbaf5e885be83c3023f"
+        or hash == "c6f257c097d0c59f879b074b3817a28edba7868c95619c7a7945dc3e3f353830" then
+        tagColor = rgbm(0.4, 0.5, 1, 1)
+    end
+
+    c = {
+        rawName = rawName,
+        name = cleanName,
+        iconItems = parsedName.iconItems,
+
+        flagPath = buildFlagPath(nationCode),
+        hasCustomIcon = ac.isCustomIconSet(index),
+
+        lastPingRounded = -9999,
+        pingText = "",
+        pingColor = rgbm(1, 1, 1, 1),
+
+        tagColor = tagColor
+    }
+
+
+    carCache[index] = c
+    return c
+end
+
+local connectionState = {}
+
+local function invalidateCarCache(index)
+    carCache[index] = nil
+end
+
+local function rebuildCarCache(index)
+    invalidateCarCache(index)
+    return getCarCache(index)
+end
+
+local function refreshConnectionStates()
+    for i = 0, sim.carsCount - 1 do
+        local car = ac.getCar(i)
+        if car then
+            local isConnected = car.isConnected == true
+            local wasConnected = connectionState[i]
+
+            if wasConnected ~= isConnected then
+                connectionState[i] = isConnected
+
+                if isConnected then
+                    rebuildCarCache(i)
+                else
+                    invalidateCarCache(i)
+                end
+            elseif isConnected then -- performance loss here
+                local cached = carCache[i]
+                local liveName = ac.getDriverName(i) or ""
+
+                if not cached or cached.rawName ~= liveName then
+                    rebuildCarCache(i)
+                else
+                    local liveTagColor = nil
+
+                    if liveName ~= "" and ac.DriverTags then
+                        local tags = ac.DriverTags(liveName)
+                        if tags and tags.color then
+                            local r, g, b = _unpackRGB(tags.color)
+                            if r and g and b then
+                                liveTagColor = rgbm(r, g, b, 1)
+                            end
+                        end
+                    end
+
+                    local sameColor =
+                        (cached.tagColor == nil and liveTagColor == nil) or
+                        (cached.tagColor ~= nil and liveTagColor ~= nil
+                            and cached.tagColor.r == liveTagColor.r
+                            and cached.tagColor.g == liveTagColor.g
+                            and cached.tagColor.b == liveTagColor.b)
+
+                    if not sameColor then
+                        clearCarCache()
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- DRIVE: بادج الرتبة (من نظام الربط /link) مكان البنق — نفس مكانه ونفس ستايله بالضبط
+local RANK_FALLBACK_COLS = {
+    admin = rgbm(0.90, 0.28, 0.30, 1),
+    mod   = rgbm(0.31, 0.61, 0.98, 1),
+    vip   = rgbm(0.96, 0.77, 0.09, 1),
+}
+local function formatRank(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.rank or r.rank == '' then
+        return "", rgbm(1, 1, 1, 1)
+    end
+    local col = rgbm(0.97, 0.51, 0.05, 1)   -- برتقالي DRIVE افتراضياً
+    local hex = r.color
+    if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
+        local rr = (tonumber(hex:sub(2, 3), 16) or 247) / 255
+        local gg = (tonumber(hex:sub(4, 5), 16) or 130) / 255
+        local bb = (tonumber(hex:sub(6, 7), 16) or 14) / 255
+        col = rgbm(rr, gg, bb, 1)
+    else
+        col = RANK_FALLBACK_COLS[tostring(r.rank):lower()] or col
+    end
+    return tostring(r.rank), col
+end
+
+local function updatePingCache(c, pingValue)
+    -- DRIVE: نعرض الرتبة (ما نستخدم قيمة البنق) — التحديث كل رسم رخيص (قراءة جدول فقط)
+    c.pingText, c.pingColor = formatRank((c.rawName ~= '' and c.rawName) or c.name)
+end
+
+local function getNameColor(c, alpha)
+    if st.useDriverTagsColor and c.tagColor then
+        return rgbm(c.tagColor.r, c.tagColor.g, c.tagColor.b, alpha)
+    end
+    return rgbm(dc.textColor.r, dc.textColor.g, dc.textColor.b, dc.textColor.mult * alpha)
+end
+
+local function getOutlineColor(c, alpha)
+    if st.useDriverTagsColorOutline and c.tagColor then
+        return rgbm(c.tagColor.r, c.tagColor.g, c.tagColor.b, alpha)
+    end
+    return rgbm(dc.outlineColor.r, dc.outlineColor.g, dc.outlineColor.b, dc.outlineColor.mult * alpha)
+end
+
+local function drawTag(c, nameSizePx, alpha) -- performance loss here
+    local tagSize = vec2(st.storedTagWidth, st.storedTagHeight)
+    local center = vec2(tagSize.x * 0.5, tagSize.y * 0.5)
+
+    ui.pushDWriteFont(st.fontType)
+
+    local flagW, flagH = 0, 0
+    local drawFlag = false
+
+    if st.showFlag then
+        if c.hasCustomIcon then
+            drawFlag = true
+            flagW, flagH = st.flagSize, st.flagSize
+        elseif c.flagPath then
+            drawFlag = true
+            flagW, flagH = st.flagSize, st.flagSize
+        end
+    end
+
+    local pingText = ""
+    local pingColor = rgbm(1, 1, 1, 1)
+    if st.showPing and sim.isOnlineRace then
+        pingText = c.pingText
+        pingColor = c.pingColor
+    end
+
+    local nameTextSize = measureCached(c.name, nameSizePx)
+    local pingSizePx = st.pingSize
+    local pingTextSize = (pingText ~= "" and measureCached(pingText, pingSizePx)) or vec2(0, 0)
+    local gap = 10
+
+    local iconItems = c.iconItems or {}
+    local iconLayout = {}
+    local iconsW = 0
+    local iconsH = 0
+
+    for i = 1, #iconItems do
+        local icon = iconItems[i]
+        local w, h, textSizePx = getIconItemSize(icon, nameSizePx)
+        iconLayout[i] = {
+            icon = icon,
+            w = w,
+            h = h,
+            textSizePx = textSizePx
+        }
+        iconsW = iconsW + w
+        if i > 1 then iconsW = iconsW + gap end
+        iconsH = math.max(iconsH, h)
+    end
+
+    local contentW = nameTextSize.x
+    if drawFlag then contentW = contentW + flagW + gap end
+    if #iconLayout > 0 then contentW = contentW + gap + iconsW end
+    if pingText ~= "" then contentW = contentW + gap + pingTextSize.x end
+
+    local contentH = math.max(nameTextSize.y, flagH, pingTextSize.y, iconsH)
+    local pad = vec2(st.boxPaddingX, st.boxPaddingY)
+
+    local boxMin = center - vec2(contentW, contentH) * 0.5 - pad
+    local boxMax = center + vec2(contentW, contentH) * 0.5 + pad
+
+    if st.boxEnabled then
+        ui.drawRectFilled(
+            boxMin,
+            boxMax,
+            rgbm(dc.boxColor.r, dc.boxColor.g, dc.boxColor.b, dc.boxColor.mult * alpha),
+            st.boxRadius
+        )
+    end
+
+    local x = center.x - contentW * 0.5
+    local y = center.y - contentH * 0.5
+
+    if drawFlag then
+        local p1 = vec2(x, y + (contentH - flagH) * 0.5)
+        local p2 = vec2(x + flagW, y + (contentH + flagH) * 0.5)
+
+        if c.hasCustomIcon then
+            ui.drawImage('car' .. c.index .. '::special::driver', p1, p2, rgbm(1, 1, 1, alpha))
+        else
+            ui.drawImage(c.flagPath, p1, p2, rgbm(1, 1, 1, alpha))
+        end
+
+        x = x + flagW + gap
+    end
+
+    local nameColor = getNameColor(c, alpha)
+    local outlineColor = getOutlineColor(c, alpha)
+
+    ui.setCursor(vec2(x, y + (contentH - nameTextSize.y) * 0.5))
+    ui.beginOutline()
+    ui.dwriteText(c.name, nameSizePx, nameColor)
+    ui.endOutline(outlineColor, st.outlineThickness)
+
+    x = x + nameTextSize.x
+
+    if #iconLayout > 0 then
+        x = x + gap
+        for i = 1, #iconLayout do
+            local item = iconLayout[i]
+            local icon = item.icon
+            local top = y + (contentH - item.h) * 0.5
+
+            if icon.kind == 'image' then
+                ui.drawImage(icon.path, vec2(x, top), vec2(x + item.w, top + item.h), nameColor)
+            else
+                ui.setCursor(vec2(x, top))
+                ui.beginOutline()
+                ui.dwriteText(icon.text, item.textSizePx or nameSizePx, nameColor)
+                ui.endOutline(outlineColor, st.outlineThickness)
+            end
+
+            x = x + item.w
+            if i < #iconLayout then
+                x = x + gap
+            end
+        end
+    end
+
+    if pingText ~= "" then
+        x = x + gap
+        ui.setCursor(vec2(x, y + (contentH - pingTextSize.y) * 0.5))
+        ui.beginOutline()
+        ui.dwriteText(pingText, pingSizePx, rgbm(pingColor.r, pingColor.g, pingColor.b, alpha))
+        ui.endOutline(outlineColor, st.outlineThickness)
+    end
+
+    ui.popDWriteFont()
+end
+
+local function drawNameTag(car)
+    if isCurrentServerBlacklisted() then return end
+
+    if not st.advancedSettings then
+        --if car.index == sim.focusedCar then return end
+        if not car.isConnected then return end
+    end
+
+    if not st.pitVisible then
+        if car.isInPit or car.isInPitlane then return end
+    end
+
+    local dist = car.distanceToCamera
+    if dist <= 0 or dist > st.tagsDistance then return end
+
+    local c = getCarCache(car.index)
+    if not c or (c.name == "" and #(c.iconItems or {}) == 0) then return end
+
+    if st.showPing and sim.isOnlineRace then
+        updatePingCache(c, car.ping)
+    end
+
+    local t = 1 - (dist / st.tagsDistance)
+    t = clamp01(t) ^ 0.9
+
+    if t < st.hiddenDistance then return end
+
+    local alphaFar = smoothstep(st.hiddenDistance, st.midDistance, t)
+    local nearT = smoothstep(st.nearFadeStart, st.nearFadeEnd, t)
+    local alphaNear = 1 - nearT
+
+    if st.fadingCloseToggle then
+        alphaNear = math.max(st.nearFadeMin, alphaNear)
+    else
+        alphaNear = 1
+    end
+
+    local alpha = alphaFar * alphaNear
+    if alpha <= 0.02 then return end
+
+    local fontSize = (t >= st.midDistance) and st.fontSizeV or st.fontSizeV - 6
+
+    c.index = car.index
+    drawTag(c, fontSize, alpha)
+end
+
+local function registerTags()
+    local tags1 = vec2(st.storedTagWidth, st.storedTagHeight)
+    --if ac.getServerIP() == "65.108.176.35" then return end --Blacklist SRP
+    -- if isCurrentServerBlacklisted() then
+    --     return --ui.onDriverNameTag(false, rgbm(1, 1, 1, 1), drawNameTag, { tagSize = vec2(512, 64) })
+    -- end
+    if isCurrentServerBlacklisted() then
+        tags1 = vec2(512, 64)
+    end
+    ui.onDriverNameTag(true, rgbm(1, 1, 1, 0), drawNameTag, {
+        distanceMultiplier = math.ceil(st.tagsDistance / 10),
+        tagSize = tags1
+    })
+end
+
+local updateCheckTimer = 0
+local updateCheckInterval = 0.25
+
+local function tagsUpdateLoop(dt)
+    if isCurrentServerBlacklisted() then return end
+    if st.tagsDisabled then return end
+
+    dt = dt or 0
+
+    updateCheckTimer = updateCheckTimer - dt
+    if updateCheckTimer <= 0 then
+        updateCheckTimer = updateCheckInterval
+
+        refreshConnectionStates()
+
+        if validationInputsChanged() then
+            validateSettings()
+            storeValidatedSnapshot()
+        end
+    end
+    if st.fontType ~= lastFont then
+        lastFont = st.fontType
+        clearTextMeasureCache()
+    end
+    if not inited and sim.driverNamesShown then
+        validateSettings()
+        storeValidatedSnapshot()
+        registerTags()
+        inited = true
+        tagsDirty = false
+        lastTagW, lastTagH, lastDistance = st.storedTagWidth, st.storedTagHeight, st.tagsDistance
+        return
+    end
+
+    if inited then
+        if st.storedTagWidth ~= lastTagW or st.storedTagHeight ~= lastTagH or st.tagsDistance ~= lastDistance then
+            markTagsDirty()
+        end
+    end
+
+    if tagsDirty then
+        tagsDirtyTimer = tagsDirtyTimer - dt
+        if tagsDirtyTimer <= 0 then
+            registerTags()
+            lastTagW, lastTagH, lastDistance = st.storedTagWidth, st.storedTagHeight, st.tagsDistance
+            tagsDirty = false
+        end
+    end
+end
+
+return { update = tagsUpdateLoop }
+end)
+if not __dtOk then
+  ac.log("DriveTags load failed: " .. tostring(DriveTags))
+  DriveTags = { update = function() end }
 end
 function script.update(dt)
   Core.update(dt)
@@ -2390,6 +3231,7 @@ function script.update(dt)
   shaddaUpdate(dt)
 
   pcall(function() DriveChat.update(dt) end)
+  pcall(function() DriveTags.update(dt) end)   -- [29] تاقات الأسماء فوق السيارات
 end
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
@@ -2470,7 +3312,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded")
+ac.log("DRIVE Panel loaded (v4.4 — crispy-engine tags + vanilla chat hidden)")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
