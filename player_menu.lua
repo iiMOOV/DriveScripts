@@ -1578,7 +1578,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v4.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v4.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2189,6 +2189,27 @@ local __dcOk, DriveChat = pcall(function()
       pcall(function() handleTitle(S.browser:title() or '') end)
     end
 
+    -- إخفاء شات AC الأصلي (نفس طريقة IDDL): نلقى نافذته ونخفيها ونصغّرها ونطلعها برا الشاشة
+    -- ويعاد التطبيق كل ٥ ثواني عشان لو اللعبة رجعتها
+    pcall(function()
+      if not S.vanillaWin then
+        if now - (S.vanillaTry or -10) < 3 then return end
+        S.vanillaTry = now
+        for _, nm in ipairs({ 'Chat', 'chat', 'AC_CHAT', 'ac_chat', 'CHAT' }) do
+          local w = ac.accessAppWindow(nm)
+          if w and w:valid() then S.vanillaWin = w; break end
+        end
+      end
+      local w = S.vanillaWin
+      if w and w:valid() and (not S.vanillaHidden or now >= (S.vanillaAt or 0)) then
+        w:setVisible(false)
+        w:resize(vec2(1, 1))
+        w:move(vec2(99999, 99999))
+        S.vanillaHidden = true
+        S.vanillaAt = now + 5
+      end
+    end)
+
     -- لو الصفحة جهزت وما وصلنا تأكيد إن sendAsync توصلها — نتحول تلقائياً لوضع الطوارئ
     if S.browser and S.ready and S.initSent and not S.acked and not S.jsMode and (now - S.readyAt) > 3 then
       S.jsMode = true
@@ -2392,127 +2413,172 @@ end
 
 --=================================================================
 -- [29] DRIVE TAGS  (أسماء اللاعبين فوق السيارات — DRIVE Community)
---   الاسم + العلم + بادج الرتبة (بدل البنق) — الرتب من نظام الربط [26]
---   ملاحظة: لازم "أسماء السائقين" مفعلة من إعدادات AC عشان التاقات تشتغل
+--   رسم مباشر على الشاشة: نسقط موقع كل سيارة بـ ac.worldCoordinateToScreen
+--   ونرسم التاق فوقها — بدون ui.onDriverNameTag نهائياً (كان يبدّل الأسماء
+--   بين السيارات لما يشتغل من سكربت سيرفر). الاسم والموقع يُقرآن من نفس
+--   السيارة بنفس اللحظة، فتبادل الأسماء مستحيل.
+--   الشكل: [علم] الاسم [بادج الرتبة بلونها من نظام /link] — هوية DRIVE.
 --=================================================================
-local TAGS = {
-  ENABLED   = true,
-  DISTANCE  = 150,     -- أقصى مسافة تظهر فيها التاقات (متر)
-  FONT      = "Segoe UI;Weight=Bold",
-  NAME_SIZE = 40,
-  RANK_SIZE = 26,
-  SHOW_FLAG = true,    -- علم الدولة جنب الاسم
-  FLAG_SIZE = 44,
-  TAG_W = 1024, TAG_H = 130,
-}
-local tagsInited = false
-local tagMeasureCache = {}
-local function tagMeasure(text, size)
-  local k = size .. '|' .. text
-  local v = tagMeasureCache[k]
-  if not v then v = ui.measureDWriteText(text, size); tagMeasureCache[k] = v end
-  return v
-end
--- ألوان احتياطية لو البوت ما أرسل لون للرتبة
-local TAG_RANK_COLS = { admin = rgbm(0.90, 0.28, 0.30, 1), mod = rgbm(0.31, 0.61, 0.98, 1), vip = rgbm(0.96, 0.77, 0.09, 1) }
-local function tagRankInfo(name)
-  local r = DriveChat.getRank(name)
-  if not r or not r.rank or r.rank == '' then return nil end
-  local col = ACC
-  local hex = r.color
-  if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
-    local rr = (tonumber(hex:sub(2, 3), 16) or 247) / 255
-    local gg = (tonumber(hex:sub(4, 5), 16) or 130) / 255
-    local bb = (tonumber(hex:sub(6, 7), 16) or 14) / 255
-    col = rgbm(rr, gg, bb, 1)
-  else
-    col = TAG_RANK_COLS[tostring(r.rank):lower()] or ACC
+local __dtOk, DriveTags = pcall(function()
+  local T = {
+    ENABLED   = true,
+    DISTANCE  = 150,    -- أقصى مسافة تظهر فيها التاقات (متر)
+    HEIGHT    = 1.35,   -- ارتفاع التاق فوق مركز السيارة (متر)
+    FONT      = "Segoe UI;Weight=Bold",
+    SHOW_FLAG = true,   -- علم الدولة جنب الاسم
+    MAX_SIZE  = 26,     -- حجم الخط وأنت قريب
+    MIN_SIZE  = 13,     -- حجم الخط عند أبعد مسافة
+  }
+  local ACC2 = rgbm(1.00, 0.45, 0.06, 1)
+  local RANK_COLS = {
+    admin = rgbm(0.90, 0.28, 0.30, 1),
+    mod   = rgbm(0.31, 0.61, 0.98, 1),
+    vip   = rgbm(0.96, 0.77, 0.09, 1),
+  }
+  local measureCache = {}
+  local function meas(txt, size)
+    local k = size .. '|' .. txt
+    local v = measureCache[k]
+    if not v then v = ui.measureDWriteText(txt, size); measureCache[k] = v end
+    return v
   end
-  return tostring(r.rank), col
-end
-local function drawDriveTag(car)
-  if not car.isConnected then return end
-  local dist = car.distanceToCamera
-  if dist <= 0 or dist > TAGS.DISTANCE then return end
-  local nm = ac.getDriverName(car.index) or ''
-  if nm == '' then return end
-  local t = 1 - dist / TAGS.DISTANCE
-  local alpha = math.min(1, math.max(0, t * 3))
-  if alpha <= 0.03 then return end
-  local nameSize = (t >= 0.75) and TAGS.NAME_SIZE or (TAGS.NAME_SIZE - 6)
-  local center = vec2(TAGS.TAG_W * 0.5, TAGS.TAG_H * 0.5)
-  ui.pushDWriteFont(TAGS.FONT)
-  local nameSz = tagMeasure(nm, nameSize)
-  local gap = 12
-  -- علم الدولة
-  local flagPath = nil
-  if TAGS.SHOW_FLAG then
+  local function rankInfo(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.rank or r.rank == '' then return nil end
+    local col = ACC2
+    local hex = r.color
+    if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
+      local rr = (tonumber(hex:sub(2, 3), 16) or 247) / 255
+      local gg = (tonumber(hex:sub(4, 5), 16) or 130) / 255
+      local bb = (tonumber(hex:sub(6, 7), 16) or 14) / 255
+      col = rgbm(rr, gg, bb, 1)
+    else
+      col = RANK_COLS[tostring(r.rank):lower()] or ACC2
+    end
+    return tostring(r.rank), col
+  end
+  local flagCache = {}
+  local function flagPath(i)
+    local p = flagCache[i]
+    if p ~= nil then if p ~= false then return p end return nil end
     local code = nil
-    pcall(function() code = ac.getDriverNationCode(car.index) end)
+    pcall(function() code = ac.getDriverNationCode(i) end)
     if code and code ~= '' then
       if code == 'PLA' then code = 'AC' end
-      flagPath = "/content/gui/NationFlags/" .. string.upper(code) .. ".png"
+      p = "/content/gui/NationFlags/" .. string.upper(code) .. ".png"
+    else
+      p = false
+    end
+    flagCache[i] = p
+    if p ~= false then return p end
+    return nil
+  end
+  local suppressed = false
+
+  local function drawOneTag(car, sw, sh, camPos, camFwd)
+    local nm = ac.getDriverName(car.index) or ''
+    if nm == '' then return end
+    local dist = car.distanceToCamera or 9999
+    if dist <= 0.5 or dist > T.DISTANCE then return end
+    local wpos = car.position + vec3(0, T.HEIGHT, 0)
+    if camPos and camFwd then
+      local rel = wpos - camPos
+      if rel:dot(camFwd) <= 0 then return end   -- خلف الكاميرا
+    end
+    local sp = nil
+    pcall(function() sp = ac.worldCoordinateToScreen(wpos) end)
+    if not sp then return end
+    if sp.x < -200 or sp.y < -100 or sp.x > sw + 200 or sp.y > sh + 100 then return end
+    local t = 1 - dist / T.DISTANCE
+    local alpha = math.min(1, math.max(0, t * 3.2))
+    if alpha <= 0.03 then return end
+    local size = math.floor(T.MIN_SIZE + (T.MAX_SIZE - T.MIN_SIZE) * t + 0.5)
+    local nmSz = meas(nm, size)
+    local gap = math.max(5, size * 0.34)
+    local fl = T.SHOW_FLAG and flagPath(car.index) or nil
+    local flS = fl and (size + 4) or 0
+    local rankText, rankCol = rankInfo(nm)
+    local rankSize = math.max(10, math.floor(size * 0.72))
+    local pillW, pillH, rkSz = 0, 0, nil
+    if rankText then
+      rkSz = meas(rankText, rankSize)
+      pillW = rkSz.x + size * 0.7
+      pillH = rkSz.y + size * 0.28
+    end
+    local cw = nmSz.x + (fl and (flS + gap) or 0) + (rankText and (gap + pillW) or 0)
+    local ch = math.max(nmSz.y, flS, pillH)
+    local padX, padY = size * 0.45, size * 0.26
+    local x0 = sp.x - (cw + padX * 2) * 0.5
+    local y0 = sp.y - (ch + padY * 2)   -- الصندوق يجلس فوق نقطة الإسقاط
+    local x1 = x0 + cw + padX * 2
+    local y1 = y0 + ch + padY * 2
+    -- صندوق DRIVE: أسود + خط برتقالي سفلي
+    ui.drawRectFilled(vec2(x0, y0), vec2(x1, y1), rgbm(0.03, 0.03, 0.04, 0.90 * alpha), size * 0.38)
+    ui.drawRectFilled(vec2(x0 + 6, y1 - 2.4), vec2(x1 - 6, y1), rgbm(ACC2.r, ACC2.g, ACC2.b, 0.9 * alpha), 1.5)
+    local x = x0 + padX
+    local yMid = (y0 + y1) * 0.5
+    if fl then
+      pcall(function()
+        ui.drawImage(fl, vec2(x, yMid - flS * 0.5), vec2(x + flS, yMid + flS * 0.5), rgbm(1, 1, 1, alpha))
+      end)
+      x = x + flS + gap
+    end
+    ui.setCursor(vec2(x, yMid - nmSz.y * 0.5))
+    ui.beginOutline()
+    ui.dwriteText(nm, size, rgbm(1, 1, 1, alpha))
+    ui.endOutline(rgbm(0, 0, 0, 0.9 * alpha), math.max(2, size * 0.14))
+    x = x + nmSz.x
+    if rankText then
+      x = x + gap
+      local py0 = yMid - pillH * 0.5
+      ui.drawRectFilled(vec2(x, py0), vec2(x + pillW, py0 + pillH),
+        rgbm(rankCol.r * 0.22, rankCol.g * 0.22, rankCol.b * 0.22, 0.95 * alpha), pillH * 0.5)
+      ui.drawRect(vec2(x, py0), vec2(x + pillW, py0 + pillH),
+        rgbm(rankCol.r, rankCol.g, rankCol.b, 0.9 * alpha), pillH * 0.5, nil, 1.4)
+      ui.setCursor(vec2(x + (pillW - rkSz.x) * 0.5, py0 + (pillH - rkSz.y) * 0.5))
+      ui.dwriteText(rankText, rankSize, rgbm(rankCol.r, rankCol.g, rankCol.b, alpha))
     end
   end
-  -- بادج الرتبة (مكان البنق)
-  local rankText, rankCol = tagRankInfo(nm)
-  local pillW, pillH, rankSz = 0, 0, nil
-  if rankText then
-    rankSz = tagMeasure(rankText, TAGS.RANK_SIZE)
-    pillW = rankSz.x + 26
-    pillH = rankSz.y + 12
-  end
-  local contentW = nameSz.x
-  if flagPath then contentW = contentW + TAGS.FLAG_SIZE + gap end
-  if rankText then contentW = contentW + gap + pillW end
-  local contentH = math.max(nameSz.y, flagPath and TAGS.FLAG_SIZE or 0, pillH)
-  local pad = vec2(14, 8)
-  local bmin = center - vec2(contentW, contentH) * 0.5 - pad
-  local bmax = center + vec2(contentW, contentH) * 0.5 + pad
-  -- الصندوق بهوية DRIVE: أسود + خط برتقالي سفلي
-  ui.drawRectFilled(bmin, bmax, rgbm(0.03, 0.03, 0.04, 0.92 * alpha), 14)
-  ui.drawRectFilled(vec2(bmin.x + 8, bmax.y - 3), vec2(bmax.x - 8, bmax.y), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * alpha), 2)
-  local x = center.x - contentW * 0.5
-  local y = center.y - contentH * 0.5
-  if flagPath then
-    pcall(function()
-      ui.drawImage(flagPath, vec2(x, y + (contentH - TAGS.FLAG_SIZE) * 0.5),
-        vec2(x + TAGS.FLAG_SIZE, y + (contentH + TAGS.FLAG_SIZE) * 0.5), rgbm(1, 1, 1, alpha))
-    end)
-    x = x + TAGS.FLAG_SIZE + gap
-  end
-  ui.setCursor(vec2(x, y + (contentH - nameSz.y) * 0.5))
-  ui.beginOutline()
-  ui.dwriteText(nm, nameSize, rgbm(1, 1, 1, alpha))
-  ui.endOutline(rgbm(0, 0, 0, 0.9 * alpha), 5)
-  x = x + nameSz.x
-  if rankText then
-    x = x + gap
-    local py = y + (contentH - pillH) * 0.5
-    ui.drawRectFilled(vec2(x, py), vec2(x + pillW, py + pillH),
-      rgbm(rankCol.r * 0.22, rankCol.g * 0.22, rankCol.b * 0.22, 0.95 * alpha), pillH * 0.5)
-    ui.drawRect(vec2(x, py), vec2(x + pillW, py + pillH),
-      rgbm(rankCol.r, rankCol.g, rankCol.b, 0.9 * alpha), pillH * 0.5, nil, 1.6)
-    ui.setCursor(vec2(x + (pillW - rankSz.x) * 0.5, py + (pillH - rankSz.y) * 0.5))
-    ui.beginOutline()
-    ui.dwriteText(rankText, TAGS.RANK_SIZE, rgbm(rankCol.r, rankCol.g, rankCol.b, alpha))
-    ui.endOutline(rgbm(0, 0, 0, 0.85 * alpha), 3)
-  end
-  ui.popDWriteFont()
-end
-local function tagsUpdate()
-  if not TAGS.ENABLED or tagsInited then return end
-  local s = ac.getSim()
-  if s and s.driverNamesShown then
-    pcall(function()
-      ui.onDriverNameTag(true, rgbm(1, 1, 1, 0), drawDriveTag, {
-        distanceMultiplier = math.ceil(TAGS.DISTANCE / 10),
-        tagSize = vec2(TAGS.TAG_W, TAGS.TAG_H),
-      })
-      tagsInited = true
-      ac.log("DRIVE Tags registered")
-    end)
-  end
+
+  return {
+    update = function(dt)
+      -- كتم أسماء AC الافتراضية (لو مفعلة بإعدادات اللاعب) عشان ما تطلع دبل فوق تاقاتنا
+      if not suppressed then
+        local s = ac.getSim()
+        if s and s.driverNamesShown then
+          pcall(function()
+            ui.onDriverNameTag(true, rgbm(0, 0, 0, 0), function() end, { tagSize = vec2(16, 16) })
+          end)
+          suppressed = true
+        end
+      end
+    end,
+    draw = function()
+      if not T.ENABLED then return end
+      local s = ac.getSim()
+      if not s then return end
+      local sw, sh = s.windowWidth, s.windowHeight
+      local camPos, camFwd = nil, nil
+      pcall(function() if ac.getCameraPosition then camPos = ac.getCameraPosition() end end)
+      pcall(function() if ac.getCameraForward then camFwd = ac.getCameraForward() end end)
+      ui.transparentWindow("driveTagsOverlay", vec2(0, 0), vec2(sw, sh), false, function()
+        ui.pushDWriteFont(T.FONT)
+        for i = 0, (s.carsCount or 0) - 1 do
+          if i ~= s.focusedCar then
+            local car = ac.getCar(i)
+            if car and car.isConnected then
+              pcall(drawOneTag, car, sw, sh, camPos, camFwd)
+            end
+          end
+        end
+        ui.popDWriteFont()
+      end, ui.WindowFlags.NoInputs + ui.WindowFlags.NoMouseInputs)
+    end,
+  }
+end)
+if not __dtOk then
+  ac.log("DriveTags load failed: " .. tostring(DriveTags))
+  DriveTags = { update = function() end, draw = function() end }
 end
 function script.update(dt)
   Core.update(dt)
@@ -2528,7 +2594,7 @@ function script.update(dt)
   shaddaUpdate(dt)
 
   pcall(function() DriveChat.update(dt) end)
-  pcall(tagsUpdate)   -- [29] تاقات الأسماء فوق السيارات
+  pcall(function() DriveTags.update(dt) end)   -- [29] تاقات الأسماء فوق السيارات
 end
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
@@ -2580,6 +2646,7 @@ local function drawChatHint()
 end
 
 function script.drawUI()
+  pcall(function() DriveTags.draw() end)   -- [29] التاقات (تحت كل النوافذ)
   DriveChat.draw()
   drawMenuHost()   -- [28] المضيف الدائم — المنيو يشتغل بدون تفعيل الاكسترا
   drawOpenHint()
@@ -2609,7 +2676,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v4.3 — tags + rank colors + own avatar)")
+ac.log("DRIVE Panel loaded (v4.5 — projection tags (no name-swap possible))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
