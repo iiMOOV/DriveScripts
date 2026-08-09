@@ -1730,11 +1730,12 @@ local __dcOk, DriveChat = pcall(function()
   -- نفس القائمة عند كل العملاء — نرسل رقم فقط ($STICK:N) لأن روابط GIF أطول من حد رسائل AC.
   -- (القائمتان تنعرضان بتابين منفصلين داخل الصفحة)
   local STICKERS = {
-    "https://i.imgur.com/WOV2nwa.png",
-    "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg",
+    "https://pbs.twimg.com/media/G7gyUn4WMAAafxA.jpg",
+    "https://i1.sndcdn.com/artworks-kpz9WCWcGJ9AFL58-10R0yA-t500x500.jpg",
   }
   local GIFS = {
-    "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHdkam8yZXpsNjE3a2R1ZzJubWYwNnN3aXk1eDFlcWZ4dXpqbDlkbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kn27lnYSAE9O/giphy.gif",
+    "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif",
+    "https://www.thisiscolossal.com/wp-content/uploads/2014/03/120430.gif",
   }
   local ALLPICS, PICIDX = {}, {}
   for _, u in ipairs(STICKERS) do ALLPICS[#ALLPICS + 1] = u end
@@ -1748,6 +1749,8 @@ local __dcOk, DriveChat = pcall(function()
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {},
+    seen = {}, jsMode = false, acked = false, readyAt = 0,
+    inputSaved = false, savedInput = nil,
     log = {}, chatReveal = 1, logDrag = false, logDragStart = vec2(0, 0), logOfsStart = vec2(0, 0),
   }
   local LOG_MAX = 60
@@ -1762,19 +1765,63 @@ local __dcOk, DriveChat = pcall(function()
     return '"' .. tostring(s):gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '') .. '"'
   end
 
+  -- ===== ناقل Lua -> JS (قناتين: sendAsync الأساسية + javascript: للطوارئ) =====
+  local B64C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  local function b64(data)
+    return ((data:gsub('.', function(x)
+      local r, b = '', x:byte()
+      for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and '1' or '0') end
+      return r
+    end) .. '0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+      if #x < 6 then return '' end
+      local c = 0
+      for i = 1, 6 do c = c + (x:sub(i, i) == '1' and 2 ^ (6 - i) or 0) end
+      return B64C:sub(c + 1, c + 1)
+    end) .. ({ '', '==', '=' })[#data % 3 + 1])
+  end
+  local function jval(v)
+    local t = type(v)
+    if t == 'string' then return jsonStr(v) end
+    if t == 'number' then return tostring(v) end
+    if t == 'boolean' then return v and 'true' or 'false' end
+    if t == 'table' then
+      if #v > 0 or next(v) == nil then
+        local parts = {}
+        for i = 1, #v do parts[#parts + 1] = jval(v[i]) end
+        return '[' .. table.concat(parts, ',') .. ']'
+      else
+        local parts = {}
+        for k, val in pairs(v) do parts[#parts + 1] = jsonStr(tostring(k)) .. ':' .. jval(val) end
+        return '{' .. table.concat(parts, ',') .. '}'
+      end
+    end
+    return 'null'
+  end
+  local function jsend(event, data, cb)
+    if not S.browser then return end
+    if S.jsMode then
+      -- وضع الطوارئ: sendAsync ما وصلت للصفحة — ننفذ مباشرة عبر javascript: URL
+      pcall(function()
+        local payload = b64(jval({ e = event, d = data }))
+        S.browser:navigate("javascript:try{DCRX('" .. payload .. "')}catch(e){}")
+      end)
+      if cb then pcall(cb) end
+    else
+      pcall(function() S.browser:sendAsync(event, data, cb or NOOP) end)
+    end
+  end
+
   -- ===== دفع رسالة للصفحة =====
   local function toBrowser(m)
     if not (S.browser and S.ready) then return end
     local r = S.ranks[m.name]
-    pcall(function()
-      S.browser:sendAsync('message', {
-        name = m.name, rawName = m.name, text = m.text, sticker = m.sticker,
-        srv = m.srv or false, mine = m.mine or false,
-        rank = m.srv and "" or rankOf(m.name),
-        avatar = (r and r.avatar) or nil,
-        discord = (r and r.discord) or false,
-      }, NOOP)
-    end)
+    jsend('dcMessage', {
+      name = m.name, rawName = m.name, text = m.text or false, sticker = m.sticker or false,
+      srv = m.srv or false, mine = m.mine or false,
+      rank = (m.srv and "") or rankOf(m.name),
+      avatar = (r and r.avatar) or false,
+      discord = (r and r.discord) or false,
+    })
   end
   local function pushLog(m)
     S.log[#S.log + 1] = m
@@ -1795,7 +1842,7 @@ local __dcOk, DriveChat = pcall(function()
   end
   local function sendAdminMsg(txt)
     if ADMIN_WEBHOOK == "" then
-      pcall(function() if S.browser and S.ready then S.browser:sendAsync('adminAck', { ok = false, reason = 'disabled' }, NOOP) end end)
+      if S.browser and S.ready then jsend('dcAdminAck', { ok = false, reason = 'disabled' }) end
       return
     end
     local nm = myName()
@@ -1808,9 +1855,7 @@ local __dcOk, DriveChat = pcall(function()
       .. '{"name":"Message","value":' .. jsonStr(txt) .. ',"inline":false}'
       .. '],"footer":{"text":"DRIVE CHAT"},"timestamp":"' .. os.date('!%Y-%m-%dT%H:%M:%SZ') .. '"}]}'
     web.post(ADMIN_WEBHOOK, { ['Content-Type'] = 'application/json' }, payload, function(err)
-      pcall(function()
-        if S.browser and S.ready then S.browser:sendAsync('adminAck', { ok = (err == nil) }, NOOP) end
-      end)
+      if S.browser and S.ready then jsend('dcAdminAck', { ok = (err == nil) }) end
     end)
   end
 
@@ -1831,22 +1876,25 @@ local __dcOk, DriveChat = pcall(function()
   -- ===== فتح/قفل =====
   local function openChat()
     S.open = true
-    pcall(function() if S.browser and S.ready then S.browser:sendAsync('focus', true, NOOP) end end)
+    if S.browser and S.ready then jsend('dcFocus', true) end
   end
   local function closeChat()
     S.open = false; S.wantsKbd = false; S.dragging = false
-    pcall(function() if S.browser and S.ready then S.browser:sendAsync('blur', true, NOOP) end end)
+    if S.browser and S.ready then jsend('dcBlur', true) end
   end
 
   local function markReady()
     S.ready = true
     S.initSent = false
     S.lastOk = S.clock
+    S.acked = false
+    S.readyAt = S.clock
   end
 
   -- ===== أوامر الصفحة (JS -> Lua) =====
   local function handleData(data)
     if data == 'ready' then markReady(); return end
+    if data == 'ack' then S.acked = true; return end
     if data:sub(1, 4) == 'kbd:' then S.wantsKbd = (data:sub(5) == '1'); return end
     if data:sub(1, 5) == 'send:' then
       local msg = data:sub(6)
@@ -1875,6 +1923,27 @@ local __dcOk, DriveChat = pcall(function()
     if data == 'close' then closeChat(); return end
   end
 
+  -- كل أمر من الصفحة يجي بصيغة "<رقم>:<الأمر>" وعلى أكثر من قناة (sendAsync + عنوان الصفحة)
+  -- ندمجها هنا مع منع التكرار — نفس الرقم ينفذ مرة وحدة فقط مهما تكرر وصوله
+  local function handleRaw(payload)
+    if type(payload) ~= 'string' or payload == '' then return end
+    local seq, cmd = payload:match('^(%d+):(.*)$')
+    if seq then
+      if S.seen[seq] then return end
+      S.seen[seq] = S.clock
+      for k, t in pairs(S.seen) do if S.clock - t > 30 then S.seen[k] = nil end end
+      handleData(cmd)
+    else
+      handleData(payload)   -- توافق مع أوامر بدون رقم
+    end
+  end
+  local function handleTitle(t)
+    if type(t) ~= 'string' then return end
+    if t == 'DRIVECHAT:ready' then markReady(); return end
+    local payload = t:match('^DRIVECHAT:(.+)$')
+    if payload then handleRaw(payload) end
+  end
+
   -- ===== إنشاء المتصفح =====
   pcall(function()
     local WebBrowser = require('shared/web/browser')
@@ -1882,10 +1951,10 @@ local __dcOk, DriveChat = pcall(function()
     S.lastNav = 0
     S.browser:navigate(CHAT_URL)
     S.browser:onReceive('Drivechat', function(self, data)
-      if type(data) == 'string' then handleData(data) end
+      if type(data) == 'string' then handleRaw(data) end
     end)
     S.browser:onTitleChange(function(self, title)
-      if title == 'DRIVECHAT:ready' then markReady() end
+      handleTitle(title)
     end)
   end)
 
@@ -2079,12 +2148,20 @@ local __dcOk, DriveChat = pcall(function()
     if not sim then return end
     local now = S.clock
 
-    -- إعادة المحاولة لين الصفحة تجهز (تحقق العنوان + navigate كل 5 ثواني)
+    -- قراءة عنوان الصفحة كل فريم — قناة أوامر احتياطية (الصفحة تكتب الأوامر بالعنوان)
+    if S.browser then
+      pcall(function() handleTitle(S.browser:title() or '') end)
+    end
+
+    -- لو الصفحة جهزت وما وصلنا تأكيد إن sendAsync توصلها — نتحول تلقائياً لوضع الطوارئ
+    if S.browser and S.ready and S.initSent and not S.acked and not S.jsMode and (now - S.readyAt) > 3 then
+      S.jsMode = true
+      S.initSent = false   -- نعيد دفع كل شي بالقناة الجديدة
+      ac.log('DriveChat: sendAsync not acked - switching to javascript-url mode')
+    end
+
+    -- إعادة المحاولة لين الصفحة تجهز (navigate كل 5 ثواني)
     if S.browser and not S.ready then
-      pcall(function()
-        local t = S.browser:title() or ''
-        if t == 'DRIVECHAT:ready' then markReady() end
-      end)
       if not S.ready and (now - S.lastNav) > 5 then
         S.navRetries = S.navRetries + 1
         S.lastNav = now
@@ -2093,7 +2170,7 @@ local __dcOk, DriveChat = pcall(function()
     end
 
     -- نبض: لو الصفحة جهزت وبعدين وقفت ترد — أعد التحميل
-    if S.browser and S.ready and S.lastOk > 0 and (now - S.lastOk) > 60 then
+    if S.browser and S.ready and (not S.jsMode) and S.lastOk > 0 and (now - S.lastOk) > 60 then
       S.ready = false; S.initSent = false; S.lastNav = now; S.lastOk = 0
       pcall(function() S.browser:navigate(CHAT_URL .. '?hb=' .. tostring(math.floor(now))) end)
     end
@@ -2101,18 +2178,16 @@ local __dcOk, DriveChat = pcall(function()
     -- دفعة أولية للصفحة (مرة واحدة بعد كل ready)
     if S.browser and S.ready and not S.initSent then
       S.initSent = true
-      pcall(function()
-        S.browser:sendAsync('init', {
-          me = myName(),
-          notifs = cStor.dc_notif and 1 or 0,
-          opacity = math.floor((cStor.dc_opacity or 1) * 100),
-          adminEnabled = (ADMIN_WEBHOOK ~= "") and 1 or 0,
-        }, NOOP)
-        S.browser:sendAsync('stickers', STICKERS, NOOP)
-        S.browser:sendAsync('gifs', GIFS, NOOP)
-        -- مزامنة الرسائل السابقة
-        for _, m in ipairs(S.log) do toBrowser(m) end
-      end)
+      jsend('dcInit', {
+        me = myName(),
+        notifs = cStor.dc_notif and 1 or 0,
+        opacity = math.floor((cStor.dc_opacity or 1) * 100),
+        adminEnabled = (ADMIN_WEBHOOK ~= "") and 1 or 0,
+      })
+      jsend('dcStickers', STICKERS)
+      jsend('dcGifs', GIFS)
+      -- مزامنة الرسائل السابقة
+      for _, m in ipairs(S.log) do toBrowser(m) end
     end
 
     -- الرتب / الربط من البوت (كل 30 ثانية)
@@ -2152,7 +2227,7 @@ local __dcOk, DriveChat = pcall(function()
           end
         end
         for k in pairs(S.joined) do if not seen[k] then S.joined[k] = nil end end
-        S.browser:sendAsync('members', list, function() S.lastOk = S.clock end)
+        jsend('dcMembers', list, function() S.lastOk = S.clock end)
       end)
     end
 
@@ -2219,20 +2294,37 @@ local __dcOk, DriveChat = pcall(function()
   return {
     update = function(dt)
       S.clock = S.clock + dt
-      local canCap = true
-      if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
-      if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
-      local dn = ui.keyboardButtonDown(KEY)
-      if dn and not S.prevKey then
-        if not S.open then
-          if canCap then openChat() end
-        elseif not S.wantsKbd then
-          -- C يقفل الشات فقط لو ما كنت تكتب (وإلا حرف C ينكتب عادي)
-          closeChat()
-        end
+      -- زر C يفتح الشات فقط — الإغلاق: ESC أو ✕ أو كليك برا النافذة
+      -- (عشان كتابة حرف c أو أي حرف اختصار ما تسوي شي وأنت تكتب)
+      if not S.open then
+        local canCap = true
+        if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
+        if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
+        local dn = ui.keyboardButtonDown(KEY)
+        if dn and not S.prevKey and canCap then openChat() end
+        S.prevKey = dn
+      else
+        S.prevKey = false
       end
-      S.prevKey = dn
       chatTyping = S.open   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
+
+      -- تجميد اختصارات كل السكربتات الثانية (الشدّات/الأدمن...) وقت ما الشات مفتوح:
+      -- نرفع وضع الإدخال إلى UI مع حفظ/استرجاع الوضع السابق (نفس علاج كراش ReplayManager)
+      if S.open and not S.inputSaved then
+        S.inputSaved = true
+        pcall(function()
+          if ac.getCurrentInputMethod then S.savedInput = ac.getCurrentInputMethod() end
+          if ac.setCurrentInputMethod and ac.UserInputMode then ac.setCurrentInputMethod(ac.UserInputMode.UI) end
+        end)
+      elseif (not S.open) and S.inputSaved then
+        S.inputSaved = false
+        pcall(function()
+          if ac.setCurrentInputMethod then
+            if S.savedInput ~= nil then ac.setCurrentInputMethod(S.savedInput)
+            elseif ac.UserInputMode and ac.UserInputMode.Game then ac.setCurrentInputMethod(ac.UserInputMode.Game) end
+          end
+        end)
+      end
     end,
     draw = function()
       local ok, err = pcall(draw)
