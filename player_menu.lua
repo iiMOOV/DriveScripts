@@ -26,6 +26,7 @@
 --    [26] DRIVE CHAT .......... HTML chat (browser + Discord bridge)
 --    [27] ONLINE EXTRAS ....... optional toolbar buttons
 --    [28] MENU HOST ........... always-on menu (works without extras)
+--    [29] DRIVE TAGS .......... name tags above cars (name + rank badge)
 --
 --  RULE: every feature block owns its own state, logic and UI.
 --  To change one feature, edit only its block.
@@ -1577,7 +1578,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v4.2", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v4.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1820,6 +1821,7 @@ local __dcOk, DriveChat = pcall(function()
       name = m.name, rawName = m.name, text = m.text or false, sticker = m.sticker or false,
       srv = m.srv or false, mine = m.mine or false,
       rank = (m.srv and "") or rankOf(m.name),
+      rankColor = (r and r.color) or false,
       avatar = (r and r.avatar) or false,
       discord = (r and r.discord) or false,
     })
@@ -1998,6 +2000,7 @@ local __dcOk, DriveChat = pcall(function()
     if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
     -- كتم ماركرات بروتوكول بلقنات DRIVE (ترافيك/شدّة/رادار)
     if msg:find("^!TFC_") or msg:find("^!TRAFFIC") or msg:find("^!SHADDA") or msg:find("^!RADAR") then return true end
+    if msg:find("Slot %[") or msg:find("is not configured") then return true end   -- سبام إعدادات السيرفر
     if sender == 0 then return true end   -- صدى رسالتك — الصفحة عرضتها من قبل
     local sidx = msg:match("^%$STICK:(%d+)$")
     if sidx then
@@ -2250,6 +2253,7 @@ local __dcOk, DriveChat = pcall(function()
             list[#list + 1] = {
               name = nm, isMe = (i == 0), status = 'on',
               rank = rankOf(nm),
+              rankColor = (r and r.color) or false,
               discord = (r and r.discord) or false,
               avatar = (r and r.avatar) or nil,
               car = carName,
@@ -2367,6 +2371,14 @@ local __dcOk, DriveChat = pcall(function()
       if S.open then closeChat() else openChat() end
     end,
     isOpen = function() return S.open end,
+    -- معلومات رتبة لاعب (يستخدمها بلوك التاقات [29]): {rank, color, discord, avatar} أو nil
+    getRank = function(name)
+      local r = S.ranks[name]
+      if r and r.rank and r.rank ~= '' then return r end
+      local fr = ADMIN_NAMES[name]
+      if fr then return { rank = fr } end
+      return nil
+    end,
     push = function(name, text, isServer)
       local m = { name = name, text = text, srv = isServer and true or false, t = S.clock }
       pushLog(m); toBrowser(m)
@@ -2375,7 +2387,132 @@ local __dcOk, DriveChat = pcall(function()
 end)
 if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
-  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end }
+  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
+end
+
+--=================================================================
+-- [29] DRIVE TAGS  (أسماء اللاعبين فوق السيارات — DRIVE Community)
+--   الاسم + العلم + بادج الرتبة (بدل البنق) — الرتب من نظام الربط [26]
+--   ملاحظة: لازم "أسماء السائقين" مفعلة من إعدادات AC عشان التاقات تشتغل
+--=================================================================
+local TAGS = {
+  ENABLED   = true,
+  DISTANCE  = 150,     -- أقصى مسافة تظهر فيها التاقات (متر)
+  FONT      = "Segoe UI;Weight=Bold",
+  NAME_SIZE = 40,
+  RANK_SIZE = 26,
+  SHOW_FLAG = true,    -- علم الدولة جنب الاسم
+  FLAG_SIZE = 44,
+  TAG_W = 1024, TAG_H = 130,
+}
+local tagsInited = false
+local tagMeasureCache = {}
+local function tagMeasure(text, size)
+  local k = size .. '|' .. text
+  local v = tagMeasureCache[k]
+  if not v then v = ui.measureDWriteText(text, size); tagMeasureCache[k] = v end
+  return v
+end
+-- ألوان احتياطية لو البوت ما أرسل لون للرتبة
+local TAG_RANK_COLS = { admin = rgbm(0.90, 0.28, 0.30, 1), mod = rgbm(0.31, 0.61, 0.98, 1), vip = rgbm(0.96, 0.77, 0.09, 1) }
+local function tagRankInfo(name)
+  local r = DriveChat.getRank(name)
+  if not r or not r.rank or r.rank == '' then return nil end
+  local col = ACC
+  local hex = r.color
+  if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
+    local rr = (tonumber(hex:sub(2, 3), 16) or 247) / 255
+    local gg = (tonumber(hex:sub(4, 5), 16) or 130) / 255
+    local bb = (tonumber(hex:sub(6, 7), 16) or 14) / 255
+    col = rgbm(rr, gg, bb, 1)
+  else
+    col = TAG_RANK_COLS[tostring(r.rank):lower()] or ACC
+  end
+  return tostring(r.rank), col
+end
+local function drawDriveTag(car)
+  if not car.isConnected then return end
+  local dist = car.distanceToCamera
+  if dist <= 0 or dist > TAGS.DISTANCE then return end
+  local nm = ac.getDriverName(car.index) or ''
+  if nm == '' then return end
+  local t = 1 - dist / TAGS.DISTANCE
+  local alpha = math.min(1, math.max(0, t * 3))
+  if alpha <= 0.03 then return end
+  local nameSize = (t >= 0.75) and TAGS.NAME_SIZE or (TAGS.NAME_SIZE - 6)
+  local center = vec2(TAGS.TAG_W * 0.5, TAGS.TAG_H * 0.5)
+  ui.pushDWriteFont(TAGS.FONT)
+  local nameSz = tagMeasure(nm, nameSize)
+  local gap = 12
+  -- علم الدولة
+  local flagPath = nil
+  if TAGS.SHOW_FLAG then
+    local code = nil
+    pcall(function() code = ac.getDriverNationCode(car.index) end)
+    if code and code ~= '' then
+      if code == 'PLA' then code = 'AC' end
+      flagPath = "/content/gui/NationFlags/" .. string.upper(code) .. ".png"
+    end
+  end
+  -- بادج الرتبة (مكان البنق)
+  local rankText, rankCol = tagRankInfo(nm)
+  local pillW, pillH, rankSz = 0, 0, nil
+  if rankText then
+    rankSz = tagMeasure(rankText, TAGS.RANK_SIZE)
+    pillW = rankSz.x + 26
+    pillH = rankSz.y + 12
+  end
+  local contentW = nameSz.x
+  if flagPath then contentW = contentW + TAGS.FLAG_SIZE + gap end
+  if rankText then contentW = contentW + gap + pillW end
+  local contentH = math.max(nameSz.y, flagPath and TAGS.FLAG_SIZE or 0, pillH)
+  local pad = vec2(14, 8)
+  local bmin = center - vec2(contentW, contentH) * 0.5 - pad
+  local bmax = center + vec2(contentW, contentH) * 0.5 + pad
+  -- الصندوق بهوية DRIVE: أسود + خط برتقالي سفلي
+  ui.drawRectFilled(bmin, bmax, rgbm(0.03, 0.03, 0.04, 0.92 * alpha), 14)
+  ui.drawRectFilled(vec2(bmin.x + 8, bmax.y - 3), vec2(bmax.x - 8, bmax.y), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * alpha), 2)
+  local x = center.x - contentW * 0.5
+  local y = center.y - contentH * 0.5
+  if flagPath then
+    pcall(function()
+      ui.drawImage(flagPath, vec2(x, y + (contentH - TAGS.FLAG_SIZE) * 0.5),
+        vec2(x + TAGS.FLAG_SIZE, y + (contentH + TAGS.FLAG_SIZE) * 0.5), rgbm(1, 1, 1, alpha))
+    end)
+    x = x + TAGS.FLAG_SIZE + gap
+  end
+  ui.setCursor(vec2(x, y + (contentH - nameSz.y) * 0.5))
+  ui.beginOutline()
+  ui.dwriteText(nm, nameSize, rgbm(1, 1, 1, alpha))
+  ui.endOutline(rgbm(0, 0, 0, 0.9 * alpha), 5)
+  x = x + nameSz.x
+  if rankText then
+    x = x + gap
+    local py = y + (contentH - pillH) * 0.5
+    ui.drawRectFilled(vec2(x, py), vec2(x + pillW, py + pillH),
+      rgbm(rankCol.r * 0.22, rankCol.g * 0.22, rankCol.b * 0.22, 0.95 * alpha), pillH * 0.5)
+    ui.drawRect(vec2(x, py), vec2(x + pillW, py + pillH),
+      rgbm(rankCol.r, rankCol.g, rankCol.b, 0.9 * alpha), pillH * 0.5, nil, 1.6)
+    ui.setCursor(vec2(x + (pillW - rankSz.x) * 0.5, py + (pillH - rankSz.y) * 0.5))
+    ui.beginOutline()
+    ui.dwriteText(rankText, TAGS.RANK_SIZE, rgbm(rankCol.r, rankCol.g, rankCol.b, alpha))
+    ui.endOutline(rgbm(0, 0, 0, 0.85 * alpha), 3)
+  end
+  ui.popDWriteFont()
+end
+local function tagsUpdate()
+  if not TAGS.ENABLED or tagsInited then return end
+  local s = ac.getSim()
+  if s and s.driverNamesShown then
+    pcall(function()
+      ui.onDriverNameTag(true, rgbm(1, 1, 1, 0), drawDriveTag, {
+        distanceMultiplier = math.ceil(TAGS.DISTANCE / 10),
+        tagSize = vec2(TAGS.TAG_W, TAGS.TAG_H),
+      })
+      tagsInited = true
+      ac.log("DRIVE Tags registered")
+    end)
+  end
 end
 function script.update(dt)
   Core.update(dt)
@@ -2391,6 +2528,7 @@ function script.update(dt)
   shaddaUpdate(dt)
 
   pcall(function() DriveChat.update(dt) end)
+  pcall(tagsUpdate)   -- [29] تاقات الأسماء فوق السيارات
 end
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
@@ -2471,7 +2609,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v4.2 — chat bridge + menu host + /link DM verify)")
+ac.log("DRIVE Panel loaded (v4.3 — tags + rank colors + own avatar)")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
