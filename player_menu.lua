@@ -1476,6 +1476,67 @@ end
 --   تبي تضيف تبويب؟ سوّ بلوك ميزة فوق، وزد سطر واحد هنا.
 --   تبي تشيل تبويب؟ احذف سطره — بدون أي تعديل ثاني.
 --=================================================================
+-- ===== إعدادات التاق (يقرأها بلوك [29]) + تبويب التحكم =====
+local tagStore = ac.storage{ tg_enabled = 1, tg_scale = 1.0, tg_opacity = 1.0, tg_distance = 150.0, tg_flag = 1 }
+
+local function drawTags(X, Y, W, H)
+  local sy = Y
+  sectionTitle("تاقات الأسماء", "NAME TAGS", X, sy, W); sy = sy + 50
+
+  -- تشغيل/إيقاف
+  do
+    local on = tagStore.tg_enabled == 1
+    ui.setCursor(vec2(X, sy))
+    local cl = ui.invisibleButton("##tgen", vec2(W, 40))
+    ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + 40),
+      on and rgbm(ACC.r, ACC.g, ACC.b, 0.85) or rgbm(1, 1, 1, 0.05), 10)
+    dwBox(on and "التاقات: تعمل" or "التاقات: متوقفة", 15, X, sy, W, 40, on and DK or CW)
+    if cl then tagStore.tg_enabled = on and 0 or 1 end
+    sy = sy + 50
+  end
+
+  -- الحجم
+  dwLeftBox("الحجم", 13, X, sy, 120, 18, ACC)
+  dwRightBox(string.format("%.0f%%", tagStore.tg_scale * 100), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nsc, csc = ui.slider("##tgsize", tagStore.tg_scale, 0.5, 2.0, "")
+  if csc then tagStore.tg_scale = math.clamp(nsc, 0.5, 2.0) end
+  sy = sy + 46
+
+  -- الشفافية
+  dwLeftBox("الوضوح", 13, X, sy, 120, 18, ACC)
+  dwRightBox(string.format("%.0f%%", tagStore.tg_opacity * 100), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nop, cop = ui.slider("##tgopac", tagStore.tg_opacity, 0.15, 1.0, "")
+  if cop then tagStore.tg_opacity = math.clamp(nop, 0.15, 1.0) end
+  sy = sy + 46
+
+  -- المسافة
+  dwLeftBox("مدى الظهور", 13, X, sy, 140, 18, ACC)
+  dwRightBox(string.format("%.0f م", tagStore.tg_distance), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nds, cds = ui.slider("##tgdist", tagStore.tg_distance, 30, 400, "")
+  if cds then tagStore.tg_distance = math.clamp(nds, 30, 400) end
+  sy = sy + 46
+
+  -- العلم
+  do
+    local on = tagStore.tg_flag == 1
+    ui.setCursor(vec2(X, sy))
+    local cl = ui.invisibleButton("##tgflag", vec2(W, 36))
+    ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + 36),
+      on and rgbm(ACC.r, ACC.g, ACC.b, 0.6) or rgbm(1, 1, 1, 0.05), 10)
+    dwBox(on and "علم الدولة: ظاهر" or "علم الدولة: مخفي", 14, X, sy, W, 36, on and DK or CW)
+    if cl then tagStore.tg_flag = on and 0 or 1 end
+    sy = sy + 44
+  end
+
+  dwBox("التغييرات تنحفظ تلقائياً", 12, X, sy + 4, W, 16, CDm)
+end
+
 local TABS = {
   { key = "teleport", label = "الانتقال", icon = ICONS.crosshair, draw = drawTeleport },
   { key = "shadda",   label = "الشدّات",  icon = ICONS.pin,       draw = drawShadda   },
@@ -1486,6 +1547,7 @@ local TABS = {
   { key = "extras",   label = "الأكسترا", icon = ICONS.gear,      draw = drawExtras   },
   { key = "rewind",   label = "الرجوع",   icon = ICONS.rewind,    draw = drawRewind   },
   { key = "weather",  label = "الجو",     icon = ICONS.sun,       draw = drawWeather  },
+  { key = "tags",     label = "التاق",    icon = ICONS.gear,      draw = drawTags     },
 }
 
 --=================================================================
@@ -1578,7 +1640,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v4.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v4.7", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1865,13 +1927,24 @@ local __dcOk, DriveChat = pcall(function()
   -- ===== الربط الآمن مع الديسكورد (/link داخل الشات) =====
   -- الفكرة: الكود يتولد داخل اللعبة ويظهر لك أنت فقط، وترسله بالديسكورد !verify
   -- كذا مستحيل أحد يربط اسمك بحسابه — لأن الكود ما يظهر إلا على شاشتك.
+  -- رسالة نظام عامة (تنخزن بالسجل — تنعرض لأي أحد يفتح الشات لاحقاً)
   local function sysMsg(t)
     local m = { name = "DRIVE", text = t, srv = true, t = S.clock }
     pushLog(m); toBrowser(m)
   end
+  -- ⚠️ رسالة نظام خاصة: تُعرض على شاشتي فقط ولا تُخزَّن أبداً في S.log
+  -- (السجل يُزامَن للاعبين الجدد عند فتح الشات — فأي شي حساس مثل كود /link
+  --  يجب ألا يمر عليه إطلاقاً وإلا انتشر للجميع).
+  local function privMsg(t)
+    if not (S.browser and S.ready) then return end
+    -- نرسمها مباشرة على صفحتي فقط، بدون pushLog، وبدون أي بث
+    jsend('dcMessage', { name = "DRIVE", text = t, srv = true, mine = false,
+      rank = "", rankColor = false, avatar = false, discord = false })
+  end
   local function startDiscordLink()
-    if RANKS_URL == "" then sysMsg("نظام الربط غير مفعّل حالياً — كلم الإدارة"); return end
-    sysMsg("⏳ جاري طلب كود الربط...")
+    -- كل رسائل الربط خاصة (privMsg) — الكود لا يمر على السجل ولا يُبث لأحد
+    if RANKS_URL == "" then privMsg("نظام الربط غير مفعّل حالياً — كلم الإدارة"); return end
+    privMsg("⏳ جاري طلب كود الربط...")
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
     local code = tostring(math.random(100000, 999999))
     local steam = ""
@@ -1880,9 +1953,11 @@ local __dcOk, DriveChat = pcall(function()
     pcall(function()
       web.post(base .. '/drive/linkcode', { ['Content-Type'] = 'application/json' }, body, function(err)
         if err then
-          sysMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
+          privMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
         else
-          sysMsg("🔗 كود الربط حقك: " .. code .. " — ارسله بالخاص لبوت الديسكورد، أو بأي روم: !verify " .. code .. " (صالح ١٠ دقايق، لا تعطيه أحد)")
+          privMsg("🔗 كود الربط حقك (خاص لك فقط): " .. code)
+          privMsg("ارسله بالخاص لبوت الديسكورد (يكفي الكود لحاله)، أو بأي روم: !verify " .. code)
+          privMsg("صالح ١٠ دقايق — لا تعطيه أحد.")
         end
       end)
     end)
@@ -2506,7 +2581,8 @@ local __dtOk, DriveTags = pcall(function()
     local nm = ac.getDriverName(car.index) or ''
     if nm == '' then return end
     local dist = car.distanceToCamera or 9999
-    if dist <= 0.5 or dist > T.DISTANCE then return end
+    local maxD = tagStore.tg_distance or T.DISTANCE
+    if dist <= 0.5 or dist > maxD then return end
     local wpos = car.position + vec3(0, T.HEIGHT, 0)
     if camPos and camFwd then
       local rel = wpos - camPos
@@ -2517,13 +2593,13 @@ local __dtOk, DriveTags = pcall(function()
     if not sp then return end
     if sp.x ~= sp.x or sp.y ~= sp.y then return end    -- NaN = خلف الكاميرا / إسقاط فاشل
     if sp.x < -500 or sp.y < -500 or sp.x > sw + 500 or sp.y > sh + 500 then return end
-    local t = 1 - dist / T.DISTANCE
-    local alpha = math.min(1, math.max(0, t * 3.2))
+    local t = 1 - dist / maxD
+    local alpha = math.min(1, math.max(0, t * 3.2)) * (tagStore.tg_opacity or 1)
     if alpha <= 0.03 then return end
-    local size = math.floor(T.MIN_SIZE + (T.MAX_SIZE - T.MIN_SIZE) * t + 0.5)
+    local size = math.floor((T.MIN_SIZE + (T.MAX_SIZE - T.MIN_SIZE) * t) * (tagStore.tg_scale or 1) + 0.5)
     local nmSz = meas(nm, size)
     local gap = math.max(5, size * 0.34)
-    local fl = T.SHOW_FLAG and flagPath(car.index) or nil
+    local fl = (T.SHOW_FLAG and tagStore.tg_flag == 1) and flagPath(car.index) or nil
     local flS = fl and (size + 4) or 0
     local rankText, rankCol = rankInfo(nm)
     local rankSize = math.max(10, math.floor(size * 0.72))
@@ -2583,6 +2659,7 @@ local __dtOk, DriveTags = pcall(function()
     end,
     draw = function()
       if not T.ENABLED then return end
+      if tagStore.tg_enabled == 0 then return end
       local s = ac.getSim()
       if not s then return end
       local sw, sh = s.windowWidth, s.windowHeight
@@ -2724,7 +2801,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v4.6 — projectPoint tags + full chat hiding (IDDL methods))")
+ac.log("DRIVE Panel loaded (v4.7 — private /link + tag control tab)")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
