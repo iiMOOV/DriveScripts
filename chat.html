@@ -108,13 +108,15 @@ body{display:flex;align-items:center;justify-content:center}
 
 /* picker panel */
 .panel{margin:0 14px;background:var(--bg2);border:1px solid rgba(247,130,14,.4);border-radius:12px;
-  padding:10px;max-height:210px;overflow-y:auto;display:none}
+  padding:10px;max-height:250px;overflow-y:auto;display:none}
 .panel.show{display:block}
 .egrid{display:grid;grid-template-columns:repeat(11,1fr);gap:4px}
 .egrid span{font-size:20px;text-align:center;cursor:pointer;border-radius:6px;padding:4px 0}
 .egrid span:hover{background:var(--acc-soft)}
-.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.sgrid.g3{grid-template-columns:repeat(3,1fr)}
+/* الستيكرز مربعات صغيرة ثابتة، والـ GIF أعرض شوي — والقائمة تتمرر لأي عدد (40+ عادي) */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
+.sgrid.g3{grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}
+.sgrid img{max-height:110px}
 .sgrid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;cursor:pointer;background:#1a1922}
 .sgrid img:hover{outline:2px solid var(--acc)}
 .pgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
