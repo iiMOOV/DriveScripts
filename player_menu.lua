@@ -1715,7 +1715,7 @@ local __dcOk, DriveChat = pcall(function()
     { name = "☰ المنيو", open = function() panelOpen = true end },
     -- { name = "قائمة الأدمن", open = function() --[[ يحتاج إشارة للسكربت الثاني ]] end },
   }
-  local cStor = ac.storage{ dc_opacity = 0.95, dc_w = 760, dc_histH = 186, dc_ofsX = 0, dc_ofsY = 0, dc_emoji = true, dc_phrases = true, dc_rec1 = "😂", dc_rec2 = "👑", dc_rec3 = "🫡", dc_stickers = true, dc_w2 = 820, dc_h2 = 560, dc_logX = 16, dc_logY = -1 }
+  local cStor = ac.storage{ dc_opacity = 0.95, dc_w = 760, dc_histH = 186, dc_ofsX = 0, dc_ofsY = 0, dc_emoji = true, dc_phrases = true, dc_rec1 = "😂", dc_rec2 = "👑", dc_rec3 = "🫡", dc_stickers = true, dc_w2 = 820, dc_h2 = 560, dc_logX = 16, dc_logY = -1, dc_notif = true }
 
   local QUICK_PHRASES = {
     "عداك العيب", "كفووووو", "ولا شيء يا كنق", "مدارس",
@@ -1944,6 +1944,7 @@ end
 -- ===== السجل العائم (لما الشات مقفول/مصغّر) =====
 local function drawChatLog(sim)
   if #chatLog == 0 then return end
+  if not cStor.dc_notif then return end   -- إشعارات الفقاعات معطّلة
   if chatBarOpen and not cSt.chatMin then return end
   local recent = {}
   for i = #chatLog, math.max(1, #chatLog - 6), -1 do
@@ -2176,6 +2177,12 @@ local function drawChatBar(sim)
     fbtn(pad + 50, 44, "🖼", "stickers")
     fbtn(pad + 100, 96, "💬 اختصارات", "phrases")
     fbtn(pad + 200, 44, "🧩", "apps")
+    -- زر الإشعارات (فقاعات الرسائل وقت الشات مقفول)
+    ui.setCursor(vec2(pad + 250, fbY))
+    local nbtn = ui.invisibleButton("##notif", vec2(44, 30))
+    ui.drawRectFilled(vec2(pad + 250, fbY), vec2(pad + 294, fbY + 30), ui.itemHovered() and rgbm(1, 1, 1, 0.10) or rgbm(0.13, 0.13, 0.15, 1), 9)
+    dwBox(cStor.dc_notif and "🔔" or "🔕", 15, pad + 250, fbY, 44, 30, cStor.dc_notif and CW or CDm)
+    if nbtn then cStor.dc_notif = not cStor.dc_notif end
 
     -- ===== لوحة الإيموجي/الستيكرز/الاختصارات (داخل النافذة فوق الأزرار — تنضغط عادي) =====
     if cSt.panel then
