@@ -1712,8 +1712,8 @@ local __dcOk, DriveChat = pcall(function()
   local KEY      = string.byte("C")
   local CHAT_URL = "https://iimoov.github.io/DriveScripts/chat.html"
   -- ديسكورد (اختياري — خلّه "" للتعطيل):
-  local ADMIN_WEBHOOK   = "https://discord.com/api/webhooks/1536077079446294588/EXaBQ2dv9hJwU8EHRNDxCM6VJZHL42XQfGq9ytBjKefZzhxHCds_DqHMn7LgMED3IESH"  -- ويب هوك روم «تواصل مع الإدارة» (زر 📨 داخل الشات)
-  local CHATLOG_WEBHOOK = "https://discord.com/api/webhooks/1536076922402902087/rNy5tdYAdkRS7baBkKu0sb56nowE5TfpueIG2JgitqBF9_z7vNXbpUcsVCq7uwsauVQ_"  -- ويب هوك روم مراقبة الشات (كل رسالة يرسلها اللاعب توصل هناك)
+  local ADMIN_WEBHOOK   = "https://discord.com/api/webhooks/1536077079446294588/EXaBQ2dv9hJwU8EHRNDxCM6VJZHL42XQfGq9ytBjKefZzhxHCds_DqHMn7LgMED3IESH"   -- ويب هوك روم «تواصل مع الإدارة» (زر 📨 داخل الشات)
+  local CHATLOG_WEBHOOK = "https://discord.com/api/webhooks/1536076922402902087/rNy5tdYAdkRS7baBkKu0sb56nowE5TfpueIG2JgitqBF9_z7vNXbpUcsVCq7uwsauVQ_"   -- ويب هوك روم مراقبة الشات (كل رسالة يرسلها اللاعب توصل هناك)
   local RANKS_URL       = "http://91.218.66.157:3050/drive/ranks"  -- رابط API البوت للرتب/الربط مثال: http://IP:3050/drive/ranks
   local ADMIN_NAMES     = {}  -- fallback محلي لو ما فيه API — مثال: { ["AZOOZ"] = "admin" }
 
