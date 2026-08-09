@@ -1640,7 +1640,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v4.7", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v4.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2383,6 +2383,10 @@ local __dcOk, DriveChat = pcall(function()
               dur = math.floor(now - S.joined[jk]),
               dist = math.floor(d),
               speed = math.floor(car.speedKmh or 0),
+              level = (r and r.level) or 0,                       -- لفل اللعب
+              levelTitle = (r and r.levelTitle) or false,         -- مسمّى اللفل
+              totalMinutes = (r and r.totalMinutes) or 0,         -- إجمالي دقايق الجلوس
+              firstSeen = (r and r.firstSeen) or false,           -- أول دخول (ms)
             }
           end
         end
@@ -2544,6 +2548,11 @@ local __dtOk, DriveTags = pcall(function()
     if not v then v = ui.measureDWriteText(txt, size); measureCache[k] = v end
     return v
   end
+  local function levelOf(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.level or r.level <= 0 then return nil end
+    return r.level
+  end
   local function rankInfo(name)
     local ok, r = pcall(function() return DriveChat.getRank(name) end)
     if not ok or not r or not r.rank or r.rank == '' then return nil end
@@ -2609,8 +2618,17 @@ local __dtOk, DriveTags = pcall(function()
       pillW = rkSz.x + size * 0.7
       pillH = rkSz.y + size * 0.28
     end
-    local cw = nmSz.x + (fl and (flS + gap) or 0) + (rankText and (gap + pillW) or 0)
-    local ch = math.max(nmSz.y, flS, pillH)
+    -- لفل اللعب (Lv.N) — حبّة صغيرة برتقالية بعد الرتبة
+    local lvNum = levelOf(nm)
+    local lvText, lvW, lvH, lvSz = nil, 0, 0, nil
+    if lvNum then
+      lvText = "Lv." .. lvNum
+      lvSz = meas(lvText, rankSize)
+      lvW = lvSz.x + size * 0.6
+      lvH = rkSz and pillH or (lvSz.y + size * 0.28)
+    end
+    local cw = nmSz.x + (fl and (flS + gap) or 0) + (rankText and (gap + pillW) or 0) + (lvText and (gap + lvW) or 0)
+    local ch = math.max(nmSz.y, flS, pillH, lvH)
     local padX, padY = size * 0.45, size * 0.26
     local x0 = sp.x - (cw + padX * 2) * 0.5
     local y0 = sp.y - (ch + padY * 2)   -- الصندوق يجلس فوق نقطة الإسقاط
@@ -2641,6 +2659,17 @@ local __dtOk, DriveTags = pcall(function()
         rgbm(rankCol.r, rankCol.g, rankCol.b, 0.9 * alpha), pillH * 0.5, nil, 1.4)
       ui.setCursor(vec2(x + (pillW - rkSz.x) * 0.5, py0 + (pillH - rkSz.y) * 0.5))
       ui.dwriteText(rankText, rankSize, rgbm(rankCol.r, rankCol.g, rankCol.b, alpha))
+      x = x + pillW
+    end
+    if lvText then
+      x = x + gap
+      local ly0 = yMid - lvH * 0.5
+      ui.drawRectFilled(vec2(x, ly0), vec2(x + lvW, ly0 + lvH),
+        rgbm(ACC2.r * 0.22, ACC2.g * 0.22, ACC2.b * 0.22, 0.95 * alpha), lvH * 0.5)
+      ui.drawRect(vec2(x, ly0), vec2(x + lvW, ly0 + lvH),
+        rgbm(ACC2.r, ACC2.g, ACC2.b, 0.9 * alpha), lvH * 0.5, nil, 1.4)
+      ui.setCursor(vec2(x + (lvW - lvSz.x) * 0.5, ly0 + (lvH - lvSz.y) * 0.5))
+      ui.dwriteText(lvText, rankSize, rgbm(ACC2.r, ACC2.g, ACC2.b, alpha))
     end
   end
 
@@ -2801,7 +2830,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v4.7 — private /link + tag control tab)")
+ac.log("DRIVE Panel loaded (v4.8 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
