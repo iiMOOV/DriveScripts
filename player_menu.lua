@@ -1796,6 +1796,13 @@ local __dcOk, DriveChat = pcall(function()
   local STICKERS = {
     "https://pbs.twimg.com/media/G7gyUn4WMAAafxA.jpg",
     "https://i1.sndcdn.com/artworks-kpz9WCWcGJ9AFL58-10R0yA-t500x500.jpg",
+    "https://i.pinimg.com/236x/9c/b9/17/9cb917337ebedb3dda74c974bde47dc0.jpg",
+    "https://i.ytimg.com/vi/h5f9rl2Y5F8/oar2.jpg",
+    "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEibrYm5kiGVQRHXjNHVTJg1U8X97tUKCHc5K2r2rA4_J0xo8ALquNxqJK3VMxbI0N6mlcw_XguUtshae1huBmBNNe8cwh6_YyU9cVcZYa3_xtf8GnO2odL2vzqcWp31WjuCbkGL4r8BT1AufOl99KqxR27ITeULa6749SXfQFGFzJ3iW7udeFXz9ifywA/s640/IMG_20220925_202534_772.jpg",
+	  "https://i.imgur.com/9uijEsa.png",
+	  "https://pbs.twimg.com/media/HEOexNwWkAArXOi.jpg",
+	  "https://i.imgur.com/4wYJO7H.png",
+  	"https://i.imgur.com/GvkKdq6.png",
   }
   local GIFS = {
     "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif",
