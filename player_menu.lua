@@ -1578,7 +1578,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v4.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v4.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1993,6 +1993,32 @@ local __dcOk, DriveChat = pcall(function()
     end)
   end)
 
+  -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
+  -- نستبدل رسم شات CSP برسمة فاضية شفافة بالكامل + نبلع الإدخال
+  pcall(function()
+    pcall(ui.onChat, function(mode, readOnlyMode)
+      local t = rgbm(0, 0, 0, 0)
+      ui.pushStyleColor(ui.StyleColor.WindowBg, t)
+      ui.pushStyleColor(ui.StyleColor.TitleBg, t)
+      ui.pushStyleColor(ui.StyleColor.TitleBgActive, t)
+      ui.pushStyleColor(ui.StyleColor.TitleBgCollapsed, t)
+      ui.pushStyleColor(ui.StyleColor.Border, t)
+      ui.pushStyleColor(ui.StyleColor.BorderShadow, t)
+      ui.pushStyleColor(ui.StyleColor.ChildBg, t)
+      ui.pushStyleColor(ui.StyleColor.PopupBg, t)
+      ui.pushStyleColor(ui.StyleColor.Text, t)
+      ui.pushStyleColor(ui.StyleColor.Button, t)
+      ui.pushStyleColor(ui.StyleColor.ButtonHovered, t)
+      ui.pushStyleColor(ui.StyleColor.ButtonActive, t)
+      ui.pushStyleVarAlpha(0)
+      ui.popStyleColor(12)
+      ui.popStyleVar()
+      return true
+    end, function()
+      return true
+    end)
+  end)
+
   -- ===== اعتراض رسائل AC =====
   ac.onChatMessage(function(message, sender)
     local msg = tostring(message)
@@ -2205,6 +2231,7 @@ local __dcOk, DriveChat = pcall(function()
         w:setVisible(false)
         w:resize(vec2(1, 1))
         w:move(vec2(99999, 99999))
+        pcall(function() w:setRedirectLayer(99) end)
         S.vanillaHidden = true
         S.vanillaAt = now + 5
       end
@@ -2486,9 +2513,10 @@ local __dtOk, DriveTags = pcall(function()
       if rel:dot(camFwd) <= 0 then return end   -- خلف الكاميرا
     end
     local sp = nil
-    pcall(function() sp = ac.worldCoordinateToScreen(wpos) end)
+    pcall(function() sp = ui.projectPoint(wpos) end)   -- نفس دالة IDDL (تشتغل داخل drawUI)
     if not sp then return end
-    if sp.x < -200 or sp.y < -100 or sp.x > sw + 200 or sp.y > sh + 100 then return end
+    if sp.x ~= sp.x or sp.y ~= sp.y then return end    -- NaN = خلف الكاميرا / إسقاط فاشل
+    if sp.x < -500 or sp.y < -500 or sp.x > sw + 500 or sp.y > sh + 500 then return end
     local t = 1 - dist / T.DISTANCE
     local alpha = math.min(1, math.max(0, t * 3.2))
     if alpha <= 0.03 then return end
@@ -2645,6 +2673,26 @@ local function drawChatHint()
   end, ui.WindowFlags.NoInputs + ui.WindowFlags.NoMouseInputs)
 end
 
+--=================================================================
+-- [30] HIDE DEFAULT CAR LABELS  (إخفاء أسماء AC/CSP الافتراضية فوق السيارات)
+--   نفس طريقة IDDL: ac.hideCarLabels لكل سيارة، يعاد تطبيقها كل ثانيتين
+--   وعند تغير عدد السيارات — عشان تاقات DRIVE هي الوحيدة الظاهرة.
+--=================================================================
+local _labelHide = { last = -10, count = -1 }
+function script.draw3D()
+  pcall(function()
+    local s = ac.getSim()
+    local total = (s and s.carsCount) or 0
+    if total ~= _labelHide.count or (Core.clock - _labelHide.last) > 2.0 then
+      for ci = 0, total - 1 do
+        ac.hideCarLabels(ci, true)
+      end
+      _labelHide.count = total
+      _labelHide.last = Core.clock
+    end
+  end)
+end
+
 function script.drawUI()
   pcall(function() DriveTags.draw() end)   -- [29] التاقات (تحت كل النوافذ)
   DriveChat.draw()
@@ -2676,7 +2724,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v4.5 — projection tags (no name-swap possible))")
+ac.log("DRIVE Panel loaded (v4.6 — projectPoint tags + full chat hiding (IDDL methods))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
