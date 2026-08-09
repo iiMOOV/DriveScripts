@@ -212,9 +212,12 @@ body{display:flex;align-items:center;justify-content:center}
       <div class="cbody">
         <div class="cname" id="profname"></div>
         <div style="height:8px"></div>
+        <div class="crow"><span class="cl">🏆 المستوى</span><span class="cv" id="proflevel"></span></div>
         <div class="crow"><span class="cl">🔗 الديسكورد</span><span class="cv" id="profdisc"></span></div>
         <div class="crow"><span class="cl">🚗 السيارة</span><span class="cv" id="profcar"></span></div>
-        <div class="crow"><span class="cl">⏱️ مدة التواجد</span><span class="cv" id="profdur"></span></div>
+        <div class="crow"><span class="cl">📅 أول دخول</span><span class="cv" id="proffirst"></span></div>
+        <div class="crow"><span class="cl">🎮 إجمالي اللعب</span><span class="cv" id="proftotal"></span></div>
+        <div class="crow"><span class="cl">⏱️ مدة التواجد الآن</span><span class="cv" id="profdur"></span></div>
         <div class="crow"><span class="cl">📍 بعده عنك</span><span class="cv" id="profdist"></span></div>
         <div class="crow"><span class="cl">💨 السرعة</span><span class="cv" id="profspeed"></span></div>
         <div class="cbtns">
@@ -314,6 +317,15 @@ function fmtDur(sec){
   if(m>0) return m+'د '+s+'ث';
   return s+'ث';
 }
+function fmtDate(ms){
+  try{ const d=new Date(Number(ms)); if(isNaN(d)) return '—';
+    return d.toLocaleDateString('ar',{year:'numeric',month:'short',day:'numeric'}); }catch(e){return '—';}
+}
+function fmtPlaytime(mins){
+  const h=Math.floor(mins/60), m=Math.round(mins%60);
+  if(h>0) return h+' ساعة'+(m>0?(' و'+m+' د'):'');
+  return m+' دقيقة';
+}
 function fmtDist(m){
   if(m==null) return '—';
   if(m>=1000) return (m/1000).toFixed(1)+' كم';
@@ -366,11 +378,20 @@ function refreshProfile(){
   const m=memberByName(PROF_NAME);
   if(!m){closeProfile();return;}
   document.getElementById('profav').innerHTML=avatarHTML({...m,rawName:m.name},64);
-  document.getElementById('profname').innerHTML=`${esc(m.name)} ${m.isMe?'<span style="color:var(--mut);font-size:13px">(أنت)</span>':''} ${badgeHTML(m.rank,m.rankColor)}`;
+  const lvChip=(Number(m.level)>0)?`<span class="badge b-rank">LV ${Number(m.level)}</span>`:'';
+  document.getElementById('profname').innerHTML=`${esc(m.name)} ${m.isMe?'<span style="color:var(--mut);font-size:13px">(أنت)</span>':''} ${badgeHTML(m.rank,m.rankColor)} ${lvChip}`;
   const d=document.getElementById('profdisc');
   if(m.discord){d.textContent=(typeof m.discord==='string')?('مرتبط ✓ '+m.discord):'مرتبط ✓';d.className='cv ok';}
   else{d.textContent='غير مرتبط ✗';d.className='cv no';}
   document.getElementById('profcar').textContent=m.car||'—';
+  // المستوى + مسمّاه
+  const lv=Number(m.level)||0;
+  document.getElementById('proflevel').textContent=lv>0?('LV '+lv+(m.levelTitle?(' — '+m.levelTitle):'')):'جديد';
+  // أول دخول
+  document.getElementById('proffirst').textContent=m.firstSeen?fmtDate(m.firstSeen):'—';
+  // إجمالي اللعب (دقايق -> ساعات)
+  const tm=Number(m.totalMinutes)||0;
+  document.getElementById('proftotal').textContent=tm>0?fmtPlaytime(tm):'—';
   const liveDur=(m.dur||0)+Math.floor((Date.now()-MEMBERS_AT)/1000);
   document.getElementById('profdur').textContent=fmtDur(liveDur);
   document.getElementById('profdist').textContent=m.isMe?'—':fmtDist(m.dist);
