@@ -1709,6 +1709,12 @@ local __dcOk, DriveChat = pcall(function()
   local chatDragging, chatDragStart, chatOfsStart = false, vec2(0, 0), vec2(0, 0)
   local cSt = { chatMin = false, showPlayers = false, chatReveal = 1 }
   -- خزن معزول ببادئة dc_ عشان ما يتصادم مع خزن السكربت المضيف
+  -- ▦ تطبيقاتك: زر "التطبيقات" يعرض هذي القائمة (عشان توصلها من الشات لو خفّيت الشات الأصلي).
+  -- المنيو يشتغل مباشرة (نفس السكربت). لأي سكربت ثاني، حط دالة الفتح حقته في open.
+  local APPS = {
+    { name = "☰ المنيو", open = function() panelOpen = true end },
+    -- { name = "قائمة الأدمن", open = function() --[[ يحتاج إشارة للسكربت الثاني ]] end },
+  }
   local cStor = ac.storage{ dc_opacity = 0.95, dc_w = 760, dc_histH = 186, dc_ofsX = 0, dc_ofsY = 0, dc_emoji = true, dc_phrases = true, dc_rec1 = "😂", dc_rec2 = "👑", dc_rec3 = "🫡", dc_stickers = true, dc_w2 = 820, dc_h2 = 560, dc_logX = 16, dc_logY = -1 }
 
   local QUICK_PHRASES = {
@@ -1893,7 +1899,7 @@ local function drawMsgRow(m, ix, x, areaW, yy, a, interactive)
     ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), rgbm(0.15, 0.15, 0.17, 0.96 * a), 12)
     ui.drawRectFilled(vec2(bx2 - 3, bubY + 4), vec2(bx2, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.95 * a), 2)
     if m.sticker then
-      ui.setCursor(vec2(bx1 + 12, bubY + 8)); pcall(function() ui.image(m.sticker, vec2(96, 96)) end)
+      pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
     else
       ui.setCursor(vec2(bx1 + 12, bubY + 8))
       ui.dwriteTextAligned(m.text or "", 15, ui.Alignment.End, ui.Alignment.Start, vec2(innerW, contentH), true, rgbm(1, 1, 1, a))
@@ -1910,7 +1916,7 @@ local function drawMsgRow(m, ix, x, areaW, yy, a, interactive)
     ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), m.srv and rgbm(0.11, 0.115, 0.14, 0.96 * a) or rgbm(0.17, 0.17, 0.19, 0.96 * a), 12)
     if m.srv then ui.drawRectFilled(vec2(bx1, bubY + 4), vec2(bx1 + 3, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * a), 2) end
     if m.sticker then
-      ui.setCursor(vec2(bx1 + 12, bubY + 8)); pcall(function() ui.image(m.sticker, vec2(96, 96)) end)
+      pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
     else
       ui.setCursor(vec2(bx1 + 12, bubY + 8))
       ui.dwriteTextAligned(m.text or "", 15, ui.Alignment.End, ui.Alignment.Start, vec2(innerW, contentH), true, m.srv and rgbm(CY.r, CY.g, CY.b, a) or rgbm(1, 1, 1, a))
@@ -2013,12 +2019,6 @@ local function drawChatBar(sim)
     ui.popDWriteFont()
     dwLeftBox("الشات", 18, 132, 0, 120, HDR, rgbm(0.1, 0.06, 0.02, 1))
     dwLeftBox("💬", 20, 200, 0, 40, HDR, DK)
-    -- زر فتح المنيو (☰) — يفتح قائمة اللاعب مثل زر D
-    ui.setCursor(vec2(252, 14))
-    local mnbtn = ui.invisibleButton("##openmenu", vec2(104, 34))
-    ui.drawRectFilled(vec2(252, 14), vec2(356, 48), ui.itemHovered() and rgbm(0.14, 0.09, 0.03, 1) or rgbm(0.12, 0.08, 0.03, 0.65), 9)
-    dwBox("☰ المنيو", 14, 252, 14, 104, 34, CW)
-    if mnbtn then panelOpen = true end
     -- شفافية + إغلاق (يمين)
     dwRightBox("شفافية", 13, W - 300, 0, 60, HDR, rgbm(0.15, 0.08, 0.02, 1))
     ui.setCursor(vec2(W - 236, HDR * 0.5 - 9)); ui.setNextItemWidth(120)
@@ -2165,13 +2165,15 @@ local function drawChatBar(sim)
     fbtn(pad, 44, "😀", "emoji")
     fbtn(pad + 50, 44, "🖼", "stickers")
     fbtn(pad + 100, 96, "💬 اختصارات", "phrases")
+    fbtn(pad + 200, 52, "▦ التطبيقات", "apps")
 
     -- ===== لوحة الإيموجي/الستيكرز/الاختصارات (داخل النافذة فوق الأزرار — تنضغط عادي) =====
     if cSt.panel then
       local isEmoji = cSt.panel == "emoji"
       local isPh = cSt.panel == "phrases"
-      local pw = isEmoji and 480 or (isPh and 480 or 430)
-      local ph = isEmoji and 200 or (isPh and (math.ceil(#QUICK_PHRASES / 2) * 44 + 16) or 250)
+      local isApps = cSt.panel == "apps"
+      local pw = isEmoji and 480 or (isPh and 480 or (isApps and 260 or 430))
+      local ph = isEmoji and 200 or (isPh and (math.ceil(#QUICK_PHRASES / 2) * 44 + 16) or (isApps and (#APPS * 44 + 16) or 250))
       local px = pad
       local py = fbY - ph - 10
       if py < HDR + 40 then py = HDR + 40 end
@@ -2211,6 +2213,17 @@ local function drawChatBar(sim)
             end
           end
           ui.setCursor(vec2(0, math.ceil(#QUICK_PHRASES / cols) * 44 + 6)); ui.dummy(vec2(1, 1))
+        elseif isApps then
+          for i, ap in ipairs(APPS) do
+            local ay = 4 + (i - 1) * 44
+            ui.setCursor(vec2(4, ay))
+            local acl = ui.invisibleButton("##app" .. i, vec2(cw - 8, 38))
+            local hov = ui.itemHovered()
+            ui.drawRectFilled(vec2(4, ay), vec2(cw - 4, ay + 38), hov and rgbm(ACC.r, ACC.g, ACC.b, 0.9) or rgbm(1, 1, 1, 0.06), 9)
+            dwBox(ap.name, 15, 4, ay, cw - 8, 38, hov and DK or CW)
+            if acl then pcall(ap.open); cSt.panel = nil end
+          end
+          ui.setCursor(vec2(0, #APPS * 44 + 6)); ui.dummy(vec2(1, 1))
         else
           local scols = 4
           local ssz = math.floor((cw - 8 - (scols - 1) * 8) / scols)
@@ -2221,8 +2234,7 @@ local function drawChatBar(sim)
             local sc = ui.invisibleButton("##st" .. i, vec2(ssz, ssz))
             ui.drawRectFilled(vec2(sx, sy), vec2(sx + ssz, sy + ssz), rgbm(0.16, 0.16, 0.19, 1), 8)
             dwBox("🖼", 24, sx, sy, ssz, ssz, rgbm(1, 1, 1, 0.22))
-            ui.setCursor(vec2(sx, sy))
-            pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
+            pcall(function() ui.drawImage(st.url, vec2(sx, sy), vec2(sx + ssz, sy + ssz)) end)
             if ui.itemHovered() then ui.drawRect(vec2(sx, sy), vec2(sx + ssz, sy + ssz), rgbm(ACC.r, ACC.g, ACC.b, 0.8), 8, nil, 2) end
             if sc then
               chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, tm = nowHM(), t = pulseT }
