@@ -1777,19 +1777,7 @@ local __dcOk, DriveChat = pcall(function()
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
     { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS041kwJKUOvtKUam8j4c4J-AEXYv7ZUDyoI0CmTwam-2FsOqTgGCw63LS2&s=10" },
     { url = "https://i.pinimg.com/564x/a5/33/08/a53308c0f8050ff04b5da7c963c6d2c8.jpg" },
-    { url = "https://pbs.twimg.com/media/G7gyUn4WMAAafxA.jpg" },
-    { url = "https://pbs.twimg.com/media/E1cfC1xWQAAEbps.jpg" },
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcToODvhggidt4_Kg171VDkB6UKjwSgQMyjdH3PENoBTjl0azmBzSiqsa2DM&s=10" },
-    { url = "https://i.pinimg.com/236x/9c/b9/17/9cb917337ebedb3dda74c974bde47dc0.jpg" },
-    { url = "https://pbs.twimg.com/media/G0epVe6WwAA_QhZ.jpg" },
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsDkk_dZqunID41GEiUee0JyFYU004aj9BUfA5XNvHRFw5sE3A6Kb6vDGD&s=10" },
-    { url = "https://pbs.twimg.com/media/DL4GBkpXkAEJvuj.jpg" },
-    { url = "https://pbs.twimg.com/media/HAq9wKTbQAEp4YP.jpg" },
-    { url = "https://pbs.twimg.com/media/E5FplBNWYAQLQ4L.jpg" },
-    { url = "https://pbs.twimg.com/media/Eo_xjUBWEAIRyF7.jpg" },
-    { url = "https://i.makeagif.com/media/12-17-2023/cwSiZY.gif" },
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQUYRF_AMoy6sdcbY-35dv10f-kyDb8oB0m45GmcQkttJqtBMAy2RQsEqo&s=10" },
-    { url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYcVrVTFpPJbkg6j8KfIk9NVMm_YKKFmg-MkTyLojLIx-WcbLXVRPmRAA&s=10" }, 
+    { url = "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif" },
   }
 
   ac.onChatMessage(function(message, sender)
@@ -2025,6 +2013,12 @@ local function drawChatBar(sim)
     ui.popDWriteFont()
     dwLeftBox("الشات", 18, 132, 0, 120, HDR, rgbm(0.1, 0.06, 0.02, 1))
     dwLeftBox("💬", 20, 200, 0, 40, HDR, DK)
+    -- زر فتح المنيو (☰) — يفتح قائمة اللاعب مثل زر D
+    ui.setCursor(vec2(252, 14))
+    local mnbtn = ui.invisibleButton("##openmenu", vec2(104, 34))
+    ui.drawRectFilled(vec2(252, 14), vec2(356, 48), ui.itemHovered() and rgbm(0.14, 0.09, 0.03, 1) or rgbm(0.12, 0.08, 0.03, 0.65), 9)
+    dwBox("☰ المنيو", 14, 252, 14, 104, 34, CW)
+    if mnbtn then panelOpen = true end
     -- شفافية + إغلاق (يمين)
     dwRightBox("شفافية", 13, W - 300, 0, 60, HDR, rgbm(0.15, 0.08, 0.02, 1))
     ui.setCursor(vec2(W - 236, HDR * 0.5 - 9)); ui.setNextItemWidth(120)
@@ -2176,8 +2170,8 @@ local function drawChatBar(sim)
     if cSt.panel then
       local isEmoji = cSt.panel == "emoji"
       local isPh = cSt.panel == "phrases"
-      local pw = isEmoji and 480 or (isPh and 480 or 380)
-      local ph = isEmoji and 200 or (isPh and (math.ceil(#QUICK_PHRASES / 2) * 44 + 16) or 112)
+      local pw = isEmoji and 480 or (isPh and 480 or 430)
+      local ph = isEmoji and 200 or (isPh and (math.ceil(#QUICK_PHRASES / 2) * 44 + 16) or 250)
       local px = pad
       local py = fbY - ph - 10
       if py < HDR + 40 then py = HDR + 40 end
@@ -2218,31 +2212,27 @@ local function drawChatBar(sim)
           end
           ui.setCursor(vec2(0, math.ceil(#QUICK_PHRASES / cols) * 44 + 6)); ui.dummy(vec2(1, 1))
         else
-          local ssz = 84
+          local scols = 4
+          local ssz = math.floor((cw - 8 - (scols - 1) * 8) / scols)
           for i, st in ipairs(STICKERS) do
-            local sx = 6 + (i - 1) * (ssz + 10)
-            ui.setCursor(vec2(sx, 6))
+            local sx = 4 + ((i - 1) % scols) * (ssz + 8)
+            local sy = 4 + math.floor((i - 1) / scols) * (ssz + 8)
+            ui.setCursor(vec2(sx, sy))
             local sc = ui.invisibleButton("##st" .. i, vec2(ssz, ssz))
-            if ui.itemHovered() then ui.drawRectFilled(vec2(sx - 3, 3), vec2(sx + ssz + 3, ssz + 9), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 8) end
-            ui.drawRectFilled(vec2(sx, 6), vec2(sx + ssz, 6 + ssz), rgbm(0.16, 0.16, 0.19, 1), 8)
-            dwBox("🖼", 26, sx, 6, ssz, ssz, rgbm(1, 1, 1, 0.25))
-            ui.setCursor(vec2(sx, 6))
+            ui.drawRectFilled(vec2(sx, sy), vec2(sx + ssz, sy + ssz), rgbm(0.16, 0.16, 0.19, 1), 8)
+            dwBox("🖼", 24, sx, sy, ssz, ssz, rgbm(1, 1, 1, 0.22))
+            ui.setCursor(vec2(sx, sy))
             pcall(function() ui.image(st.url, vec2(ssz, ssz)) end)
+            if ui.itemHovered() then ui.drawRect(vec2(sx, sy), vec2(sx + ssz, sy + ssz), rgbm(ACC.r, ACC.g, ACC.b, 0.8), 8, nil, 2) end
             if sc then
               chatLog[#chatLog + 1] = { name = ac.getDriverName(0) or "أنت", sticker = st.url, srv = false, mine = true, tm = nowHM(), t = pulseT }
               while #chatLog > CHAT_MAX do table.remove(chatLog, 1) end
               pcall(function() ac.sendChatMessage("$STICK:" .. i) end)
             end
           end
-          ui.setCursor(vec2(6 + #STICKERS * 94, 0)); ui.dummy(vec2(1, 1))
+          ui.setCursor(vec2(0, math.ceil(#STICKERS / scols) * (ssz + 8) + 6)); ui.dummy(vec2(1, 1))
         end
       end)
-      -- زر إغلاق اللوحة ✕ (بالإضافة إلى الضغط على نفس الزر)
-      ui.setCursor(vec2(px + pw - 26, py + 4))
-      local pxc = ui.invisibleButton("##panelx", vec2(22, 22))
-      ui.drawRectFilled(vec2(px + pw - 26, py + 4), vec2(px + pw - 4, py + 26), ui.itemHovered() and rgbm(0.82, 0.26, 0.20, 1) or rgbm(0.22, 0.22, 0.26, 0.92), 6)
-      dwBox("✕", 13, px + pw - 26, py + 4, 22, 22, CW)
-      if pxc then cSt.panel = nil end
     end
 
     -- ===== مقبض التحجيم (زاوية سفلى يمين) =====
@@ -2339,7 +2329,6 @@ function script.update(dt)
 
   pcall(function() DriveChat.update(dt) end)
 end
-
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
 --=================================================================
