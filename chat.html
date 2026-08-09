@@ -169,7 +169,7 @@ body{display:flex;align-items:center;justify-content:center}
     </div>
   </div>
 
-  <div class="hint">للإرسال اضغط ENTER · للإغلاق ESC أو ✕ أو كليك برا النافذة · اضغط على أي عضو لعرض حسابه</div>
+  <div class="hint">للإرسال ENTER · للإغلاق ESC أو ✕ · اضغط أي عضو لعرض حسابه · اكتب /link لربط الديسكورد</div>
 
   <!-- BODY -->
   <div class="body">
@@ -366,6 +366,15 @@ function refreshProfile(){
   document.getElementById('profdur').textContent=fmtDur(liveDur);
   document.getElementById('profdist').textContent=m.isMe?'—':fmtDist(m.dist);
   document.getElementById('profspeed').textContent=(m.speed!=null?m.speed:0)+' كم/س';
+  // بروفايلك أنت + غير مرتبط -> زر يبدأ الربط مباشرة
+  const mb=document.getElementById('profmention');
+  if(m.isMe && !m.discord){
+    mb.textContent='🔗 اربط حسابك بالديسكورد';
+    mb.onclick=()=>{ sendToLua('send:/link'); closeProfile(); toast('طلبنا لك كود الربط — بيوصلك برسالة بالشات 🔗'); };
+  }else if(m.isMe){
+    mb.textContent='مرتبط ✓';
+    mb.onclick=()=>closeProfile();
+  }
 }
 setInterval(refreshProfile,1000);
 
@@ -426,7 +435,7 @@ function addMessage(m){
 function doSend(){
   const i=document.getElementById('msgin');const t=i.value.trim();
   if(!t)return;
-  addMessage({name:ME,text:t,mine:true,time:now()});   // عرض محلي فوري
+  if(!t.startsWith('/')) addMessage({name:ME,text:t,mine:true,time:now()});   // الأوامر (/link ...) ما تنعرض كرسالة
   sendToLua('send:'+t);
   i.value='';i.focus();
 }
