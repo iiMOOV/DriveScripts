@@ -23,6 +23,9 @@
 --    [23] REGISTER APP
 --    [24] UPDATE LOOP ......... calls each feature's update()
 --    [25] SCREEN HUD .......... open hint + ghost + rewind overlays
+--    [26] DRIVE CHAT .......... HTML chat (browser + Discord bridge)
+--    [27] ONLINE EXTRAS ....... optional toolbar buttons
+--    [28] MENU HOST ........... always-on menu (works without extras)
 --
 --  RULE: every feature block owns its own state, logic and UI.
 --  To change one feature, edit only its block.
@@ -1509,6 +1512,8 @@ local function drawLogo(x0, y0, x1, y1)
   dwBox("DRIVE", 26, x0, y0, boxW, boxH, CW)
 end
 
+local panelBody   -- معرّف تحت (جسم البانل المشترك)
+
 local function mainUI()
   -- إذا توقفت اللعبة عن رسم النافذة (أُغلقت من قائمة التطبيقات) ثم أعادت إظهارها،
   -- نعيد فتح البانل تلقائياً حتى لا يطلع "شبح" فاضي ويظنّه اللاعب معلّقاً.
@@ -1527,6 +1532,11 @@ local function mainUI()
     return
   end
 
+  panelBody()
+end
+
+-- جسم البانل نفسه (يرسم من الاكسترا أو من المضيف الدائم [28] — نفس الكود للاثنين)
+panelBody = function()
   -- الحجم الفعلي للنافذة (تتحجّم بالسحب الطبيعي من الزاوية/الحواف)
   local ws = ui.windowSize()
   local W = math.max(ws.x, CFG.PANEL_MIN_W)
@@ -1630,6 +1640,59 @@ ui.registerOnlineExtra(
   winFlags,
   vec2(CFG.PANEL_W, CFG.PANEL_H)
 )
+
+--=================================================================
+-- [28] ALWAYS-ON MENU HOST  (المضيف الدائم للمنيو)
+--   يرسم المنيو مباشرة من script.drawUI حتى لو ما فعّلت
+--   "DRIVE | MENU" من قائمة الاكسترا — زر D يفتحه دايم.
+--   لو الاكسترا مفعّلة وترسم، هذا البلوك يسكت تلقائياً (بدون تكرار).
+--=================================================================
+local hostStor = ac.storage{ mh_x = -1.0, mh_y = -1.0, mh_w = 0.0, mh_h = 0.0 }
+local host = { drag = false, dragOff = vec2(0, 0), sizing = false, gripStart = vec2(0, 0), sizeStart = vec2(0, 0) }
+
+local function drawMenuHost()
+  if not panelOpen then return end
+  if Core.clock - lastDrawClock < 0.3 then return end   -- الاكسترا نفسها ترسم — لا تكرر
+  local sim = ac.getSim()
+  if not sim then return end
+  local W = math.max(CFG.PANEL_MIN_W, (hostStor.mh_w > 0) and hostStor.mh_w or CFG.PANEL_W)
+  local H = math.max(CFG.PANEL_MIN_H, (hostStor.mh_h > 0) and hostStor.mh_h or CFG.PANEL_H)
+  local px, py = hostStor.mh_x, hostStor.mh_y
+  if px < 0 or py < 0 then
+    px = (sim.windowWidth - W) * 0.5
+    py = (sim.windowHeight - H) * 0.5
+  end
+  px = math.max(0, math.min(sim.windowWidth - 80, px))
+  py = math.max(0, math.min(sim.windowHeight - 60, py))
+  ui.transparentWindow("driveMenuHost", vec2(px, py), vec2(W, H), function()
+    panelBody()
+    local mlp = ui.mouseLocalPos()
+    -- سحب من الشريط العلوي (ما عدا زر الإغلاق يمين)
+    if ui.mouseClicked(ui.MouseButton.Left) and not host.drag and not host.sizing
+       and mlp.y >= 0 and mlp.y <= 44 and mlp.x >= 0 and mlp.x <= (W - 50) and not ui.anyItemActive() then
+      host.drag = true; host.dragOff = vec2(mlp.x, mlp.y)
+    end
+    if host.drag then
+      if ui.mouseDown(ui.MouseButton.Left) then
+        local mp = ui.mousePos()
+        hostStor.mh_x = mp.x - host.dragOff.x
+        hostStor.mh_y = mp.y - host.dragOff.y
+      else host.drag = false end
+    end
+    -- تحجيم من الزاوية السفلية اليمنى (نفس علامة التحجيم المرسومة)
+    local overGrip = mlp.x >= (W - 26) and mlp.x <= W and mlp.y >= (H - 26) and mlp.y <= H
+    if overGrip and ui.mouseDown(ui.MouseButton.Left) and not host.sizing and not host.drag then
+      host.sizing = true; host.gripStart = ui.mousePos(); host.sizeStart = vec2(W, H)
+    end
+    if host.sizing then
+      if ui.mouseDown(ui.MouseButton.Left) then
+        local mp = ui.mousePos()
+        hostStor.mh_w = math.max(CFG.PANEL_MIN_W, host.sizeStart.x + (mp.x - host.gripStart.x))
+        hostStor.mh_h = math.max(CFG.PANEL_MIN_H, host.sizeStart.y + (mp.y - host.gripStart.y))
+      else host.sizing = false end
+    end
+  end)
+end
 
 --=================================================================
 -- [24] UPDATE LOOP
@@ -2136,12 +2199,10 @@ local __dcOk, DriveChat = pcall(function()
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
-          -- التقاط الكيبورد فقط لما خانة الكتابة داخل الصفحة عليها فوكس (kbd:1)
-          -- يمنع كراش ReplayManager من كيبيندات السكربتات الثانية وقت الكتابة
-          if S.wantsKbd then
-            local kb = ui.captureKeyboard(true, true)
-            if kb then S.browser:keyboard(kb) end
-          end
+          -- التقاط الكيبورد كامل طول ما نافذة الشات مفتوحة (نفس أسلوب IDDL المجرّب)
+          -- يوصل الكتابة للصفحة ويمنع كيبيندات السكربتات الثانية (حماية ReplayManager)
+          local kb = ui.captureKeyboard(true, true)
+          if kb then S.browser:keyboard(kb) end
         end
       end)
 
@@ -2215,7 +2276,6 @@ end
 local function drawOpenHint()
   if not CFG.SHOW_OPEN_HINT then return end
   if panelOpen then return end
-  if Core.clock - lastDrawClock > 0.5 then return end
 
   local screen = ac.getUI().windowSize
   -- أول ثواني بعد الدخول: تنبيه أكبر وأوضح، بعدها يرجع صغير وهادي
@@ -2258,6 +2318,7 @@ end
 
 function script.drawUI()
   DriveChat.draw()
+  drawMenuHost()   -- [28] المضيف الدائم — المنيو يشتغل بدون تفعيل الاكسترا
   drawOpenHint()
   drawChatHint()
 
