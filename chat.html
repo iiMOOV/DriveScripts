@@ -169,7 +169,7 @@ body{display:flex;align-items:center;justify-content:center}
     </div>
   </div>
 
-  <div class="hint">للإرسال اضغط ENTER · C لإخفاء الشات · اضغط على أي عضو لعرض حسابه</div>
+  <div class="hint">للإرسال اضغط ENTER · للإغلاق ESC أو ✕ أو كليك برا النافذة · اضغط على أي عضو لعرض حسابه</div>
 
   <!-- BODY -->
   <div class="body">
@@ -250,10 +250,22 @@ body{display:flex;align-items:center;justify-content:center}
    JS→Lua : AC.send('Drivechat', 'command:...')
    ============================================================ */
 
-/* ---------- CSP bridge (JS -> Lua) ---------- */
+/* ---------- CSP bridge (JS -> Lua) ----------
+   كل أمر يترقّم "<رقم>:<الأمر>" وينرسل على كل القنوات المتاحة + عنوان الصفحة.
+   Lua يمنع التكرار بالرقم — فما يهم كم قناة وصلت. */
+let TSEQ = 0, TQUEUE = [], TBUSY = false;
+function pumpTitle(){
+  if(TBUSY || !TQUEUE.length) return;
+  TBUSY = true;
+  document.title = 'DRIVECHAT:' + TQUEUE.shift();
+  setTimeout(()=>{ TBUSY = false; pumpTitle(); }, 80);
+}
 function sendToLua(msg){
-  try{ if(window.AC && AC.send){ AC.send('Drivechat', String(msg)); return; } }catch(e){}
-  try{ if(window.external && window.external.invoke){ window.external.invoke(String(msg)); } }catch(e){}
+  const payload = (++TSEQ) + ':' + String(msg);
+  try{ if(window.AC && AC.sendAsync) AC.sendAsync('Drivechat', payload); }catch(e){}
+  try{ if(window.AC && AC.send) AC.send('Drivechat', payload); }catch(e){}
+  try{ if(window.external && window.external.invoke) window.external.invoke(payload); }catch(e){}
+  TQUEUE.push(payload); pumpTitle();
 }
 
 /* ---------- state ---------- */
@@ -435,27 +447,20 @@ function togglePanel(k){
 function ins(e){const i=document.getElementById('msgin');i.value+=e;i.focus();}
 function phr(t){addMessage({name:ME,text:t,mine:true,time:now()});sendToLua('send:'+t);togglePanel('phr');}
 
-/* ---------- keyboard capture (مهم!) ----------
-   Lua ما يلتقط الكيبورد إلا لما نرسل kbd:1 (خانة كتابة عليها فوكس)
-   عشان مفاتيح القيادة/الكاميرا تشتغل طبيعي وأنت مو تكتب. */
-function isEditable(el){return el&&(el.tagName==='INPUT'&&el.type!=='range'||el.tagName==='TEXTAREA');}
-document.addEventListener('focusin',e=>{ if(isEditable(e.target)) sendToLua('kbd:1'); });
-document.addEventListener('focusout',()=>{ setTimeout(()=>{ if(!isEditable(document.activeElement)) sendToLua('kbd:0'); },0); });
-/* نبض كل 400ms — يضمن إن Lua دايم عارف حالة الفوكس حتى لو فات حدث */
-setInterval(()=>{ sendToLua('kbd:'+(isEditable(document.activeElement)?'1':'0')); },400);
+/* ---------- keyboard ---------- */
+/* الشات المفتوح = وضع كتابة كامل (الكيبورد كله للشات) — الإغلاق: ESC أو ✕ أو كليك برا النافذة */
 
 /* ============================================================
    Lua -> JS  (browser:sendAsync('EVENT', data))
    ============================================================ */
-window.DriveChat = {
-  message: addMessage,
-  clear:   ()=>{msgsEl.innerHTML='';},
-  members: (list)=>{MEMBERS=list||[];MEMBERS_AT=Date.now();renderMembers();refreshProfile();},
-  me:      (n)=>{ME=n||'أنت';},
-  stickers:(list)=>{if(list&&list.length)STICKERS=list;},
-  gifs:    (list)=>{if(list&&list.length)GIFS=list;},
-  opacity: (v)=>{document.querySelector('.win').style.opacity=(v||100)/100;},
-  init:    (d)=>{
+/* الأسماء كلها بادئة dc — عشان نقدر نعرّفها كدوال عالمية بأمان بدون ما نكسر window.focus/blur */
+const HANDLERS = {
+  dcMessage: (m)=>{ m=m||{}; addMessage({...m, text:(m.text===false?undefined:m.text), sticker:(m.sticker===false?undefined:m.sticker), avatar:(m.avatar===false?undefined:m.avatar)}); },
+  dcClear:   ()=>{msgsEl.innerHTML='';},
+  dcMembers: (list)=>{MEMBERS=list||[];MEMBERS_AT=Date.now();renderMembers();refreshProfile();},
+  dcStickers:(list)=>{if(list&&list.length)STICKERS=list;},
+  dcGifs:    (list)=>{if(list&&list.length)GIFS=list;},
+  dcInit:    (d)=>{
     d=d||{};
     if(d.me){ME=d.me;}
     NOTIFS=(d.notifs===undefined)?true:!!Number(d.notifs);
@@ -463,13 +468,32 @@ window.DriveChat = {
     document.getElementById('adminbtn').style.display=ADMIN_ENABLED?'flex':'none';
     applyNotifBtn();
     if(d.opacity){const o=Math.max(35,Math.min(100,Number(d.opacity)));document.getElementById('opac').value=o;document.querySelector('.win').style.opacity=o/100;}
+    sendToLua('ack');   // نأكد لـ Lua إن قناة الاستقبال شغّالة
   },
-  focus:   ()=>{ setTimeout(()=>document.getElementById('msgin').focus(),30); },
-  blur:    ()=>{ try{document.activeElement.blur();}catch(e){} closeProfile(); closeAdmin(); if(curPanel)togglePanel(curPanel); sendToLua('kbd:0'); },
-  adminAck:(d)=>{ d=d||{}; if(d.ok)toast('تم إرسال رسالتك للإدارة ✓'); else toast('تعذر الإرسال — كلم الإدارة بالديسكورد'); },
+  dcFocus:   ()=>{ setTimeout(()=>document.getElementById('msgin').focus(),30); },
+  dcBlur:    ()=>{ try{document.activeElement.blur();}catch(e){} closeProfile(); closeAdmin(); if(curPanel)togglePanel(curPanel); },
+  dcAdminAck:(d)=>{ d=d||{}; if(d.ok)toast('تم إرسال رسالتك للإدارة ✓'); else toast('تعذر الإرسال — كلم الإدارة بالديسكورد'); },
 };
-/* اربط أحداث sendAsync */
-try{ if(window.AC&&AC.on){ for(const k in window.DriveChat) AC.on(k, window.DriveChat[k]); } }catch(e){}
+window.DriveChat = HANDLERS;
+
+/* استقبال من Lua على كل القنوات المحتملة (يختلف حسب نسخة CSP): */
+function bindIncoming(name, fn){
+  const wrapped = (d)=>{ if(typeof d==='string'){ try{ d=JSON.parse(d); }catch(e){} } try{ fn(d); }catch(e){} };
+  window[name] = wrapped;                                              // نداء دالة عالمية
+  try{ if(window.AC && AC.on)        AC.on(name, wrapped); }catch(e){}
+  try{ if(window.AC && AC.onReceive) AC.onReceive(name, wrapped); }catch(e){}
+  document.addEventListener(name, e=>wrapped(e && e.detail !== undefined ? e.detail : undefined));
+}
+for(const k in HANDLERS) bindIncoming(k, HANDLERS[k]);
+
+/* قناة الطوارئ: Lua ينفذ DCRX('base64-json') مباشرة داخل الصفحة */
+window.DCRX = function(b){
+  try{
+    const json = decodeURIComponent(escape(atob(b)));
+    const p = JSON.parse(json);
+    if(p && p.e && HANDLERS[p.e]) HANDLERS[p.e](p.d);
+  }catch(e){}
+};
 
 document.getElementById('opac').oninput=function(){
   document.querySelector('.win').style.opacity=this.value/100; sendToLua('opac:'+this.value);
@@ -478,7 +502,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.addEventListener('load',()=>{ sendToLua('ready'); document.title='DRIVECHAT:ready'; });
+window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>
 </html>
