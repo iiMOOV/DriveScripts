@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2525,58 +2525,61 @@ local __dcOk, DriveChat = pcall(function()
         end
       end
 
-      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
+      local GS = 28   -- حجم منطقة مقبض التحجيم (زاوية سفلية يسرى — RTL)
+      local overGrip = false
+
+      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
-        if not S.dragging and not S.sizing then
+        local mlp = ui.mouseLocalPos()
+        -- هل الماوس فوق مقبض التحجيم؟ (زاوية سفلية يسرى)
+        overGrip = mlp.x >= 0 and mlp.x <= GS and mlp.y >= (S.H - GS) and mlp.y <= S.H
+
+        -- بدء/استمرار التحجيم — نفس أسلوب المنيو المجرّب (mouseDown مباشر داخل النافذة)
+        if (overGrip or S.sizing) and ui.mouseDown(ui.MouseButton.Left) and not S.dragging then
+          if not S.sizing then
+            S.sizing = true; S.szStart = ui.mousePos(); S.szWH = vec2(S.W, S.H); S.szRight = S.pos.x + S.W
+          end
+          local mp = ui.mousePos()
+          local dx = S.szStart.x - mp.x   -- سحب لليسار = أعرض
+          local dy = mp.y - S.szStart.y    -- سحب لتحت = أطول
+          S.W = math.max(480, math.min(1400, S.szWH.x + dx))
+          S.H = math.max(360, math.min(950, S.szWH.y + dy))
+          S.pos.x = (S.szRight or (S.pos.x + S.W)) - S.W
+          if S.pos.x < 0 then S.pos.x = 0 end
+        elseif S.sizing and not ui.mouseDown(ui.MouseButton.Left) then
+          S.sizing = false
+          cStor.dc_w = S.W; cStor.dc_h = S.H
+          cStor.dc_posX = S.pos.x; cStor.dc_posY = S.pos.y
+        end
+
+        -- علامة المقبض (٣ خطوط برتقالية) — تتوهّج فوقها
+        do
+          local hot = overGrip or S.sizing
+          ui.drawRectFilled(vec2(0, S.H - GS), vec2(GS, S.H), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.20 or 0.0), 6)
+          for gi = 1, 3 do
+            local o = gi * 6
+            ui.drawLine(vec2(3, S.H - o), vec2(o, S.H - 3), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.95 or 0.5), 2)
+          end
+          if hot then ui.setMouseCursor(ui.MouseCursor.ResizeNESW) end
+        end
+
+        -- إدخال الماوس للصفحة — فقط لو مو ساحب/محجّم ومو فوق المقبض
+        if not S.dragging and not S.sizing and not overGrip then
           local uis = ac.getUI()
-          local mlp = ui.mouseLocalPos()
           S.browser:mouseInput(vec2(mlp.x / S.W, mlp.y / S.H),
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
+        end
+        -- الكيبورد يُلتقط طول ما الشات مفتوح (ومو محجّم)
+        if not S.dragging and not S.sizing then
           local kb = ui.captureKeyboard(true, true)
           if kb then S.browser:keyboard(kb) end
         end
       end)
 
-      -- ===== مقبض التحجيم: نافذة مستقلة فوق الزاوية السفلية اليسرى =====
-      -- (نافذة منفصلة عن المتصفح عشان ما يتخاطفون على ضغطة الماوس — نفس فكرة نافذة الفقاعات)
-      do
-        local GS = 26
-        local gx = S.pos.x
-        local gy = S.pos.y + S.H - GS
-        ui.transparentWindow('driveChatResize', vec2(gx, gy), vec2(GS, GS), true, true, function()
-          local cl = ui.invisibleButton('##dcgrip', vec2(GS, GS))
-          local hov = ui.itemHovered() or S.sizing
-          ui.drawRectFilled(vec2(0, 0), vec2(GS, GS), rgbm(ACC.r, ACC.g, ACC.b, hov and 0.20 or 0.0), 6)
-          for gi = 1, 3 do
-            local o = gi * 6
-            ui.drawLine(vec2(3, GS - o), vec2(o, GS - 3), rgbm(ACC.r, ACC.g, ACC.b, hov and 0.95 or 0.5), 2)
-          end
-          if hov then ui.setMouseCursor(ui.MouseCursor.ResizeNESW) end
-          if cl and not S.sizing then
-            S.sizing = true; S.szStart = ui.mousePos(); S.szWH = vec2(S.W, S.H); S.szRight = S.pos.x + S.W
-          end
-        end)
-        if S.sizing then
-          if ui.mouseDown(ui.MouseButton.Left) then
-            local mp = ui.mousePos()
-            local dx = S.szStart.x - mp.x    -- سحب لليسار = أعرض
-            local dy = mp.y - S.szStart.y     -- سحب لتحت = أطول
-            S.W = math.max(480, math.min(1400, S.szWH.x + dx))
-            S.H = math.max(360, math.min(950, S.szWH.y + dy))
-            S.pos.x = (S.szRight or (S.pos.x + S.W)) - S.W
-            if S.pos.x < 0 then S.pos.x = 0 end
-          else
-            S.sizing = false
-            cStor.dc_w = S.W; cStor.dc_h = S.H
-            cStor.dc_posX = S.pos.x; cStor.dc_posY = S.pos.y
-          end
-        end
-      end
-
-      -- كليك برا النافذة = قفل
-      if cClicked and not S.dragging and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
+      -- كليك برا النافذة = قفل (ما نقفل وقت التحجيم/السحب)
+      if cClicked and not S.dragging and not S.sizing and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
         closeChat()
       end
       -- Escape = قفل
@@ -2966,7 +2969,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.5 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.6 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
