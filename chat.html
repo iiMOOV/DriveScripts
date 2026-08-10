@@ -126,6 +126,11 @@ body{display:flex;align-items:center;justify-content:center}
 /* ===== OVERLAYS (profile / admin) ===== */
 .ovl{position:absolute;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px)}
 .ovl.show{display:flex}
+/* البروفايل يرسو على يمين الشات (مو فوقه) — لوحة جانبية قابلة للتمرير */
+#profovl{justify-content:flex-start;align-items:stretch;background:rgba(0,0,0,.35);padding:12px}
+#profovl .card{align-self:stretch;max-height:none;height:auto;margin:0;width:340px}
+#profovl.show{display:flex}
+@media (max-width:640px){ #profovl{justify-content:center} #profovl .card{width:94vw} }
 .card{width:360px;max-width:94vw;max-height:92vh;background:var(--bg2);border:1px solid rgba(247,130,14,.45);border-radius:16px;overflow-y:auto;overflow-x:hidden;
   box-shadow:0 16px 50px rgba(0,0,0,.6);animation:pop .18s ease}
 .card::-webkit-scrollbar{width:7px}
