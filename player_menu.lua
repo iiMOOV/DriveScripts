@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.1", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2039,6 +2039,24 @@ local __dcOk, DriveChat = pcall(function()
   end
 
   -- تفاصيل كلان بالاسم → dcClanDetails
+  -- جلب إيموجيات الكلانات المتاحة → dcClanEmojis
+  local function clanFetchEmojis()
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    pcall(function()
+      web.get(base .. '/drive/clan/emojis', function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and S.browser and S.ready then
+              jsend('dcClanEmojis', { all = d.all or {}, taken = d.taken or {} })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
   local function clanFetchDetails(q)
     if RANKS_URL == "" then return end
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
@@ -2179,6 +2197,7 @@ local __dcOk, DriveChat = pcall(function()
     -- ===== أوامر الكلانات =====
     if data:sub(1, 9) == 'clanmine:' then clanFetchMine(); return end
     if data:sub(1, 12) == 'clandetails:' then clanFetchDetails(data:sub(13)); return end
+    if data:sub(1, 11) == 'clanemojis:' then clanFetchEmojis(); return end
     if data:sub(1, 11) == 'clancreate:' then
       local ok, obj = pcall(function() return JSON.parse(data:sub(12)) end)
       if ok and obj then clanPost('/drive/clan/create', { clanName = obj.clanName, tag = obj.tag, color = obj.color }, 'تم إنشاء الكلان 🛡️') end
@@ -2593,6 +2612,7 @@ local __dcOk, DriveChat = pcall(function()
               clan = (r and r.clan) or false,                     -- اسم الكلان
               clanTag = (r and r.clanTag) or false,               -- تاق الكلان
               clanColor = (r and r.clanColor) or false,           -- لون الكلان
+              clanEmoji = (r and r.clanEmoji) or false,           -- إيموجي الكلان
             }
           end
         end
@@ -3115,7 +3135,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.0 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.1 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
