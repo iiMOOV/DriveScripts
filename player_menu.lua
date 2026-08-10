@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.4", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2508,7 +2508,10 @@ local __dcOk, DriveChat = pcall(function()
       local cmp = ui.mousePos()
       local clp = cmp - S.pos
       local cClicked = ui.mouseClicked(ui.MouseButton.Left)
-      if cClicked and not S.dragging and inRect2(clp, vec2(300, 0), vec2(S.W, 60)) then
+      -- منطقة السحب من الهيدر — نسبية للحجم (عشان ما تتغير مع التكبير/التصغير)
+      local hdrH = S.H * (60 / 620)          -- ارتفاع الهيدر النسبي
+      local btnZone = S.W * (300 / 920)      -- يسار الهيدر فيه أزرار التحكم — نستثنيها
+      if cClicked and not S.dragging and inRect2(clp, vec2(btnZone, 0), vec2(S.W, hdrH)) then
         S.dragging = true; S.dragOff = clp:clone()
       end
       if S.dragging then
@@ -2963,7 +2966,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.4 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.5 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
