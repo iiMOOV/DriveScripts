@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.9", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1823,7 +1823,6 @@ local __dcOk, DriveChat = pcall(function()
   for i, u in ipairs(ALLPICS)  do PICIDX[u] = i end
 
   -- ===== الحالة =====
-  local BROWSER_RES_W, BROWSER_RES_H = 920, 620   -- دقة المتصفح الداخلية الثابتة (= الحجم الافتراضي، والرسم يكبّرها)
   local S = {
     browser = nil, ready = false, initSent = false,
     open = false, wantsKbd = false,
@@ -2126,20 +2125,29 @@ local __dcOk, DriveChat = pcall(function()
     if payload then handleRaw(payload) end
   end
 
-  -- ===== إنشاء المتصفح =====
-  pcall(function()
-    local WebBrowser = require('shared/web/browser')
-    -- دقة داخلية ثابتة عالية — الصفحة مرنة (100%) فتملأها، والرسم يُصغّر/يكبّر للنافذة.
-    -- كذا محتوى الـ HTML يتكبر ويتصغر مع النافذة (مو بس الإطار).
-    S.browser = WebBrowser({ size = vec2(BROWSER_RES_W, BROWSER_RES_H), backgroundColor = rgbm(0, 0, 0, 0) })
-    S.lastNav = 0
-    S.browser:navigate(CHAT_URL)
-    S.browser:onReceive('Drivechat', function(self, data)
+  -- ===== إنشاء المتصفح (دالة قابلة لإعادة الاستخدام) =====
+  -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء، فعشان محتوى الـ HTML
+  -- يملأ النافذة فعلياً عند التكبير/التصغير، نعيد إنشاءه بالحجم الجديد.
+  local WebBrowser = require('shared/web/browser')
+  local function makeBrowser(w, h)
+    local b = WebBrowser({ size = vec2(math.floor(w), math.floor(h)), backgroundColor = rgbm(0, 0, 0, 0) })
+    b:navigate(CHAT_URL)
+    b:onReceive('Drivechat', function(self, data)
       if type(data) == 'string' then handleRaw(data) end
     end)
-    S.browser:onTitleChange(function(self, title)
-      handleTitle(title)
-    end)
+    b:onTitleChange(function(self, title) handleTitle(title) end)
+    return b
+  end
+  local function rebuildBrowser()
+    -- نعيد بناء المتصفح بحجم النافذة الحالي — الصفحة ترجع تحمّل بالحجم الصح
+    S.ready = false
+    S.jsMode = false
+    pcall(function() S.browser = makeBrowser(S.W, S.H) end)
+    S.lastNav = S.clock
+  end
+  pcall(function()
+    S.browser = makeBrowser(S.W, S.H)
+    S.lastNav = 0
   end)
 
   -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
@@ -2537,7 +2545,7 @@ local __dcOk, DriveChat = pcall(function()
       -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
       local GRIP = 26
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
-        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
+        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)   -- المتصفح بنفس حجم النافذة (يُعاد بناؤه عند التحجيم)
         local mlp = ui.mouseLocalPos()
 
         -- تحجيم من الزاوية السفلية اليمنى — نفس منطق drawMenuHost بالضبط
@@ -2553,6 +2561,7 @@ local __dcOk, DriveChat = pcall(function()
           else
             S.sizing = false
             cStor.dc_w = S.W; cStor.dc_h = S.H
+            rebuildBrowser()   -- أعد بناء المتصفح بالحجم الجديد عشان المحتوى يملأ النافذة
           end
         end
 
@@ -2972,7 +2981,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.8 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.9 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
