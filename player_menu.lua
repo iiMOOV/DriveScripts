@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.7", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1828,7 +1828,7 @@ local __dcOk, DriveChat = pcall(function()
     open = false, wantsKbd = false,
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
-    sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), sizeLoaded = false,
+    sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), szRight = 0, sizeLoaded = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {},
     seen = {}, jsMode = false, acked = false, readyAt = 0,
     inputSaved = false, savedInput = nil,
@@ -1986,12 +1986,17 @@ local __dcOk, DriveChat = pcall(function()
     local body = '{"name":' .. jsonStr(myName()) .. ',"desc":' .. jsonStr(txt) .. '}'
     pcall(function()
       web.post(base .. '/drive/description', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
-        local ok, desc = false, nil
+        local ok, desc, hasDesc = false, "", false
         if not err and resp and resp.body then
-          pcall(function() local d = JSON.parse(resp.body); ok = d and d.ok; desc = d and d.desc end)
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            ok = d and d.ok
+            if d and d.desc ~= nil then desc = d.desc; hasDesc = true end
+          end)
         end
+        -- نرسل الوصف كنص فعلي حتى لو فاضي (hasDesc يميّز الفاضي المقصود عن عدم وصول رد)
         if S.browser and S.ready then
-          jsend('dcDescAck', { ok = ok and true or false, desc = desc or false })
+          jsend('dcDescAck', { ok = ok and true or false, desc = desc, hasDesc = hasDesc })
         end
       end)
     end)
@@ -2508,7 +2513,10 @@ local __dcOk, DriveChat = pcall(function()
       local cmp = ui.mousePos()
       local clp = cmp - S.pos
       local cClicked = ui.mouseClicked(ui.MouseButton.Left)
-      if cClicked and not S.dragging and inRect2(clp, vec2(300, 0), vec2(S.W, 60)) then
+      -- منطقة السحب من الهيدر — نسبية للحجم (عشان ما تتغير مع التكبير/التصغير)
+      local hdrH = S.H * (60 / 620)          -- ارتفاع الهيدر النسبي
+      local btnZone = S.W * (300 / 920)      -- يسار الهيدر فيه أزرار التحكم — نستثنيها
+      if cClicked and not S.dragging and inRect2(clp, vec2(btnZone, 0), vec2(S.W, hdrH)) then
         S.dragging = true; S.dragOff = clp:clone()
       end
       if S.dragging then
@@ -2522,57 +2530,56 @@ local __dcOk, DriveChat = pcall(function()
         end
       end
 
-      -- تحجيم من الزاوية السفلية اليسرى (RTL) — منطقة 22×22
-      local GRIP = 22
-      local gripMin = vec2(0, S.H - GRIP)
-      local gripMax = vec2(GRIP, S.H)
-      if cClicked and not S.dragging and not S.sizing and inRect2(clp, gripMin, gripMax) then
-        S.sizing = true; S.szStart = cmp:clone(); S.szWH = vec2(S.W, S.H)
-      end
-      if S.sizing then
-        if ui.mouseDown(ui.MouseButton.Left) then
-          -- السحب لليسار يكبّر العرض، ولتحت يكبّر الارتفاع؛ ونثبّت الحافة اليمنى
-          local dx = S.szStart.x - cmp.x
-          local dy = cmp.y - S.szStart.y
-          local rightEdge = S.pos.x + S.szWH.x
-          local newW = math.max(480, math.min(1400, S.szWH.x + dx))
-          local newH = math.max(360, math.min(950, S.szWH.y + dy))
-          S.W = newW; S.H = newH
-          S.pos.x = rightEdge - S.W   -- ثبّت الحافة اليمنى
-          if S.pos.x < 0 then S.pos.x = 0 end
-        else
-          S.sizing = false
-          cStor.dc_w = S.W; cStor.dc_h = S.H
-          cStor.dc_posX = S.pos.x; cStor.dc_posY = S.pos.y
-        end
-      end
-
-      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
+      -- ===== التحجيم: نفس نظام المنيو [28] بالحرف =====
+      -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
+      local GRIP = 26
+      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
-        -- علامة التحجيم (زاوية سفلية يسرى)
-        do
-          local gy = S.H
-          for gi = 1, 3 do
-            local o = gi * 4
-            ui.drawLine(vec2(2, gy - o), vec2(o, gy - 2), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 1.5)
+        local mlp = ui.mouseLocalPos()
+
+        -- تحجيم من الزاوية السفلية اليمنى — نفس منطق drawMenuHost بالضبط
+        local overGrip = mlp.x >= (S.W - GRIP) and mlp.x <= S.W and mlp.y >= (S.H - GRIP) and mlp.y <= S.H
+        if overGrip and ui.mouseDown(ui.MouseButton.Left) and not S.sizing and not S.dragging then
+          S.sizing = true; S.szStart = ui.mousePos(); S.szWH = vec2(S.W, S.H)
+        end
+        if S.sizing then
+          if ui.mouseDown(ui.MouseButton.Left) then
+            local mp = ui.mousePos()
+            S.W = math.max(480, math.min(1400, S.szWH.x + (mp.x - S.szStart.x)))
+            S.H = math.max(360, math.min(950, S.szWH.y + (mp.y - S.szStart.y)))
+          else
+            S.sizing = false
+            cStor.dc_w = S.W; cStor.dc_h = S.H
           end
         end
-        if not S.dragging and not S.sizing then
+
+        -- علامة المقبض (٣ خطوط برتقالية بالزاوية السفلية اليمنى)
+        do
+          local hot = overGrip or S.sizing
+          ui.drawRectFilled(vec2(S.W - GRIP, S.H - GRIP), vec2(S.W, S.H), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.20 or 0.0), 6)
+          for gi = 1, 3 do
+            local o = gi * 6
+            ui.drawLine(vec2(S.W - o, S.H - 3), vec2(S.W - 3, S.H - o), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.95 or 0.5), 2)
+          end
+          if hot then ui.setMouseCursor(ui.MouseCursor.ResizeNWSE) end
+        end
+
+        -- إدخال الماوس للصفحة — فقط لو مو محجّم/ساحب ومو فوق المقبض
+        if not S.dragging and not S.sizing and not overGrip then
           local uis = ac.getUI()
-          local mlp = ui.mouseLocalPos()
           S.browser:mouseInput(vec2(mlp.x / S.W, mlp.y / S.H),
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
-          -- التقاط الكيبورد كامل طول ما نافذة الشات مفتوحة (نفس أسلوب IDDL المجرّب)
-          -- يوصل الكتابة للصفحة ويمنع كيبيندات السكربتات الثانية (حماية ReplayManager)
+        end
+        if not S.dragging and not S.sizing then
           local kb = ui.captureKeyboard(true, true)
           if kb then S.browser:keyboard(kb) end
         end
       end)
 
-      -- كليك برا النافذة = قفل
-      if cClicked and not S.dragging and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
+      -- كليك برا النافذة = قفل (ما نقفل وقت التحجيم/السحب)
+      if cClicked and not S.dragging and not S.sizing and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
         closeChat()
       end
       -- Escape = قفل
@@ -2895,7 +2902,7 @@ local function drawChatHint()
   local w, h = 280 * k, 50 * k
   local x = (screen.x - w) * 0.5
   local y = screen.y - h - 16
-  ui.transparentWindow("driveChatHint", vec2(x, y), vec2(w, h), true, function()
+  ui.transparentWindow("driveChatHint", vec2(x, y), vec2(w, h), true, true, function()
     local pulse = 0.55 + 0.45 * math.abs(math.sin(Core.clock * 2))
     -- زر شفاف يغطي التلميح كامل — الضغط عليه يفتح الشات (مثل زر C)
     local clicked = ui.invisibleButton("##chatHintBtn", vec2(w, h))
@@ -2962,7 +2969,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.3 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.7 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
