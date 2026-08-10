@@ -386,7 +386,14 @@ function openProfile(name){
 function closeProfile(){PROF_NAME=null;document.getElementById('profovl').classList.remove('show');}
 function saveDesc(){
   const ta=document.getElementById('descinput');
-  sendToLua('desc:'+(ta.value||'').trim());
+  const val=(ta.value||'').trim();
+  sendToLua('desc:'+val);
+  // عرض فوري (متفائل) — والتأكيد يجي من dcDescAck
+  const me=MEMBERS.find(x=>x.isMe); if(me) me.desc=val;
+  if(MYME) MYME.desc=val;
+  const dv=document.getElementById('profdescview');
+  if(dv) dv.textContent=val||'— لا يوجد وصف —';
+  ta.blur();
   toast('جاري حفظ الوصف...');
 }
 function refreshProfile(){
@@ -561,7 +568,19 @@ const HANDLERS = {
     else if(d.reason==='target_not_linked'){ toast('هذا اللاعب غير مربوط بالديسكورد'); }
     else { toast('تعذّر تسجيل اللايك'); }
   },
-  dcDescAck:(d)=>{ d=d||{}; if(d.ok)toast('تم حفظ الوصف ✓'); else toast('تعذّر حفظ الوصف — اربط حسابك أول'); },
+  dcDescAck:(d)=>{ d=d||{};
+    if(d.ok){
+      // حدّث الوصف محلياً فوراً (عشان ما يرجع القديم قبل تحديث السيرفر بعد 30 ثانية)
+      const me=MEMBERS.find(x=>x.isMe);
+      if(me){ me.desc=(d.desc!==undefined&&d.desc!==false)?d.desc:me.desc; }
+      if(MYME){ MYME.desc=me?me.desc:MYME.desc; }
+      const dv=document.getElementById('profdescview');
+      if(dv&&PROF_NAME){ const cur=MEMBERS.find(x=>x.name===PROF_NAME); if(cur&&cur.isMe) dv.textContent=(cur.desc&&cur.desc!=='')?cur.desc:'— لا يوجد وصف —'; }
+      toast('تم حفظ الوصف ✓');
+    } else {
+      toast('تعذّر حفظ الوصف — اربط حسابك أول');
+    }
+  },
 };
 window.DriveChat = HANDLERS;
 
