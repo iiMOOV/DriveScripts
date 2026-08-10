@@ -1477,7 +1477,7 @@ end
 --   تبي تشيل تبويب؟ احذف سطره — بدون أي تعديل ثاني.
 --=================================================================
 -- ===== إعدادات التاق (يقرأها بلوك [29]) + تبويب التحكم =====
-local tagStore = ac.storage{ tg_enabled = 1, tg_scale = 1.0, tg_opacity = 1.0, tg_distance = 150.0, tg_flag = 1 }
+local tagStore = ac.storage{ tg_enabled = 1, tg_scale = 1.0, tg_opacity = 1.0, tg_distance = 150.0, tg_flag = 1, tg_height = 1.35 }
 
 local function drawTags(X, Y, W, H)
   local sy = Y
@@ -1520,6 +1520,15 @@ local function drawTags(X, Y, W, H)
   ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
   local nds, cds = ui.slider("##tgdist", tagStore.tg_distance, 30, 400, "")
   if cds then tagStore.tg_distance = math.clamp(nds, 30, 400) end
+  sy = sy + 46
+
+  -- الارتفاع فوق السيارة (متر)
+  dwLeftBox("ارتفاع التاق", 13, X, sy, 140, 18, ACC)
+  dwRightBox(string.format("%.2f م", tagStore.tg_height), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nhg, chg = ui.slider("##tghgt", tagStore.tg_height, 0.2, 3.0, "")
+  if chg then tagStore.tg_height = math.clamp(nhg, 0.2, 3.0) end
   sy = sy + 46
 
   -- العلم
@@ -1640,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v4.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.2", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1948,6 +1957,45 @@ local __dcOk, DriveChat = pcall(function()
     jsend('dcMessage', { name = "DRIVE", text = t, srv = true, mine = false,
       rank = "", rankColor = false, avatar = false, discord = false })
   end
+  -- إرسال لايك للاعب (المرحلة ب) — البوت يمنع التكرار بهوية اللايكر
+  local function sendLike(targetName)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body = '{"likerName":' .. jsonStr(myName()) .. ',"targetName":' .. jsonStr(targetName) .. '}'
+    pcall(function()
+      web.post(base .. '/drive/like', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        local ok, likes, reason = false, nil, nil
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            ok = d and d.ok; likes = d and d.likes; reason = d and d.reason
+          end)
+        end
+        if S.browser and S.ready then
+          jsend('dcLikeAck', { ok = ok and true or false, likes = likes or false, reason = reason or false, target = targetName })
+        end
+      end)
+    end)
+  end
+
+  -- حفظ وصف البروفايل (المرحلة ب)
+  local function sendDescription(txt)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body = '{"name":' .. jsonStr(myName()) .. ',"desc":' .. jsonStr(txt) .. '}'
+    pcall(function()
+      web.post(base .. '/drive/description', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        local ok, desc = false, nil
+        if not err and resp and resp.body then
+          pcall(function() local d = JSON.parse(resp.body); ok = d and d.ok; desc = d and d.desc end)
+        end
+        if S.browser and S.ready then
+          jsend('dcDescAck', { ok = ok and true or false, desc = desc or false })
+        end
+      end)
+    end)
+  end
+
   local function startDiscordLink()
     -- كل رسائل الربط خاصة (privMsg) — الكود لا يمر على السجل ولا يُبث لأحد
     if RANKS_URL == "" then privMsg("نظام الربط غير مفعّل حالياً — كلم الإدارة"); return end
@@ -2035,6 +2083,16 @@ local __dcOk, DriveChat = pcall(function()
       if txt ~= '' then sendAdminMsg(txt) end
       return
     end
+    if data:sub(1, 5) == 'like:' then
+      local target = data:sub(6)
+      if target ~= '' then sendLike(target) end
+      return
+    end
+    if data:sub(1, 5) == 'desc:' then
+      local txt = data:sub(6)
+      sendDescription(txt)
+      return
+    end
     if data:sub(1, 6) == 'notif:' then cStor.dc_notif = (data:sub(7) == '1'); return end
     if data:sub(1, 5) == 'opac:' then cStor.dc_opacity = (tonumber(data:sub(6)) or 100) / 100; return end
     if data == 'close' then closeChat(); return end
@@ -2116,7 +2174,9 @@ local __dcOk, DriveChat = pcall(function()
       if url then
         local ssrv = not sender or sender < 0
         local snm = ssrv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
-        local m = { name = snm, sticker = url, srv = ssrv, mine = false, t = S.clock }
+        local rr = S.ranks[snm]
+        local m = { name = snm, sticker = url, srv = ssrv, mine = false, t = S.clock,
+          avatar = (rr and rr.avatar) or nil }
         pushLog(m); toBrowser(m)
       end
       return true
@@ -2132,7 +2192,9 @@ local __dcOk, DriveChat = pcall(function()
       elseif msg:find("You have been banned", 1, true) then msg = "تم حظرك من السيرفر"
       end
     end
-    local m = { name = nm, text = msg, srv = srv, mine = false, t = S.clock }
+    local rr = S.ranks[nm]
+    local m = { name = nm, text = msg, srv = srv, mine = false, t = S.clock,
+      avatar = (rr and rr.avatar) or nil }
     pushLog(m); toBrowser(m)
     return true
   end)
@@ -2180,12 +2242,27 @@ local __dcOk, DriveChat = pcall(function()
       ui.drawCircleFilled(vec2(cx, cy), r, rgbm(0.05, 0.05, 0.06, 1))
       ui.drawCircle(vec2(cx, cy), r, rgbm(ACC.r, ACC.g, ACC.b, 0.95), 30, 2)
       dwBox2("D", r * 1.05, cx - r, cy - r, r * 2, r * 2, ACC)
-    else
-      local col = AV_COLS[1 + (nameHash(m.name or "?") % #AV_COLS)]
-      ui.drawCircleFilled(vec2(cx, cy), r, col)
-      ui.drawCircle(vec2(cx, cy), r, rgbm(1, 1, 1, 0.18), 30, 1.5)
-      dwBox2(initials(m.name), r * 0.92, cx - r, cy - r, r * 2, r * 2, CW)
+      return
     end
+    local av = m.avatar
+    if av and av ~= "" and av ~= false then
+      if ui.isImageReady(av) then
+        local ok = pcall(function()
+          if ui.drawImageRounded then
+            ui.drawImageRounded(av, vec2(cx - r, cy - r), vec2(cx + r, cy + r), r)
+          else
+            ui.drawImage(av, vec2(cx - r, cy - r), vec2(cx + r, cy + r))
+          end
+        end)
+        if ok then ui.drawCircle(vec2(cx, cy), r, rgbm(ACC.r, ACC.g, ACC.b, 0.6), 30, 1.5); return end
+      else
+        pcall(function() ui.decodeImage(av) end)
+      end
+    end
+    local col = AV_COLS[1 + (nameHash(m.name or "?") % #AV_COLS)]
+    ui.drawCircleFilled(vec2(cx, cy), r, col)
+    ui.drawCircle(vec2(cx, cy), r, rgbm(1, 1, 1, 0.18), 30, 1.5)
+    dwBox2(initials(m.name), r * 0.92, cx - r, cy - r, r * 2, r * 2, CW)
   end
   local function bubbleInner(m, areaW)
     if m.sticker then return 96, 96 end
@@ -2370,8 +2447,8 @@ local __dcOk, DriveChat = pcall(function()
         local list, seen = {}, {}
         for i = 0, (sim.carsCount or 0) - 1 do
           local car = ac.getCar(i)
-          if car and car.isConnected then
-            local nm = ac.getDriverName(i) or ("لاعب " .. i)
+          local nm = ac.getDriverName(i) or ("لاعب " .. i)
+          if car and car.isConnected and not car.isAIControlled and not string.find(nm, "Traffic") then
             local jk = i .. '|' .. nm
             if not S.joined[jk] then S.joined[jk] = now end
             seen[jk] = true
@@ -2394,6 +2471,8 @@ local __dcOk, DriveChat = pcall(function()
               levelTitle = (r and r.levelTitle) or false,         -- مسمّى اللفل
               totalMinutes = (r and r.totalMinutes) or 0,         -- إجمالي دقايق الجلوس
               firstSeen = (r and r.firstSeen) or false,           -- أول دخول (ms)
+              desc = (r and r.desc) or false,                     -- وصف البروفايل
+              likes = (r and r.likes) or 0,                       -- عدد اللايكات
             }
           end
         end
@@ -2599,7 +2678,7 @@ local __dtOk, DriveTags = pcall(function()
     local dist = car.distanceToCamera or 9999
     local maxD = tagStore.tg_distance or T.DISTANCE
     if dist <= 0.5 or dist > maxD then return end
-    local wpos = car.position + vec3(0, T.HEIGHT, 0)
+    local wpos = car.position + vec3(0, tagStore.tg_height or T.HEIGHT, 0)
     if camPos and camFwd then
       local rel = wpos - camPos
       if rel:dot(camFwd) <= 0 then return end   -- خلف الكاميرا
@@ -2707,7 +2786,8 @@ local __dtOk, DriveTags = pcall(function()
         for i = 0, (s.carsCount or 0) - 1 do
           if i ~= s.focusedCar then
             local car = ac.getCar(i)
-            if car and car.isConnected then
+            local dn = ac.getDriverName(i) or ""
+            if car and car.isConnected and not car.isAIControlled and not string.find(dn, "Traffic") then
               pcall(drawOneTag, car, sw, sh, camPos, camFwd)
             end
           end
@@ -2837,7 +2917,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v4.8 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.2 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
