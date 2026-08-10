@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.7", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1823,6 +1823,7 @@ local __dcOk, DriveChat = pcall(function()
   for i, u in ipairs(ALLPICS)  do PICIDX[u] = i end
 
   -- ===== الحالة =====
+  local BROWSER_RES_W, BROWSER_RES_H = 920, 620   -- دقة المتصفح الداخلية الثابتة (= الحجم الافتراضي، والرسم يكبّرها)
   local S = {
     browser = nil, ready = false, initSent = false,
     open = false, wantsKbd = false,
@@ -2128,7 +2129,9 @@ local __dcOk, DriveChat = pcall(function()
   -- ===== إنشاء المتصفح =====
   pcall(function()
     local WebBrowser = require('shared/web/browser')
-    S.browser = WebBrowser({ size = vec2(S.W, S.H), backgroundColor = rgbm(0, 0, 0, 0) })
+    -- دقة داخلية ثابتة عالية — الصفحة مرنة (100%) فتملأها، والرسم يُصغّر/يكبّر للنافذة.
+    -- كذا محتوى الـ HTML يتكبر ويتصغر مع النافذة (مو بس الإطار).
+    S.browser = WebBrowser({ size = vec2(BROWSER_RES_W, BROWSER_RES_H), backgroundColor = rgbm(0, 0, 0, 0) })
     S.lastNav = 0
     S.browser:navigate(CHAT_URL)
     S.browser:onReceive('Drivechat', function(self, data)
@@ -2969,7 +2972,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.7 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.8 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
