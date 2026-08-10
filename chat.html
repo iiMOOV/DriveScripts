@@ -450,9 +450,10 @@ function refreshProfile(){
   const pc=document.getElementById('profclan');
   if(m.clan&&m.clan!==false&&m.clan!==''){
     const col=(m.clanColor&&/^#[0-9a-fA-F]{6}$/.test(m.clanColor))?m.clanColor:'#8757D4';
-    pc.innerHTML=`<span class="badge" style="background:${col}22;color:${col};border:1px solid ${col};cursor:pointer" onclick="openClanDetails('${String(m.clan).replace(/'/g,"")}')">${esc(String(m.clan))} ${m.clanTag&&m.clanTag!==false?('['+esc(String(m.clanTag))+']'):''}</span>`;
+    const em=(m.clanEmoji&&m.clanEmoji!==false)?m.clanEmoji:'🛡️';
+    pc.innerHTML=`<span style="display:inline-flex;align-items:center;gap:6px;background:${col}22;color:${col};border:1px solid ${col};border-radius:20px;padding:3px 11px;cursor:pointer;font-weight:800;font-size:12.5px" onclick="openClanDetails('${String(m.clan).replace(/'/g,"")}')">${em} ${esc(String(m.clan))} ${m.clanTag&&m.clanTag!==false?('<span style=\'opacity:.7\'>['+esc(String(m.clanTag))+']</span>'):''}</span>`;
   } else {
-    pc.textContent='بدون كلان';
+    pc.innerHTML='<span style="color:var(--mut)">بدون كلان</span>';
   }
   // الحالة (أونلاين لأنه بالقائمة الآن، وإلا آخر ظهور)
   document.getElementById('profonline').textContent='🟢 متصل الآن';
@@ -575,122 +576,230 @@ function phr(t){addMessage(myMsg({text:t}));sendToLua('send:'+t);togglePanel('ph
    ============================================================ */
 /* الأسماء كلها بادئة dc — عشان نقدر نعرّفها كدوال عالمية بأمان بدون ما نكسر window.focus/blur */
 // ============ نظام الكلانات ============
-let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null;
+let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_ALL=[], CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️';
 
-function openClanPanel(){ // يفتح كلاني (أو إنشاء لو ما عندي)
-  CLAN_VIEW=null;
+function openClanPanel(){
+  CLAN_VIEW=null; CLAN_SCREEN='main';
   document.getElementById('clanovl').classList.add('show');
-  sendToLua('clanmine:'); // يطلب حالة كلاني من البوت عبر Lua
+  sendToLua('clanmine:');
+  sendToLua('clanemojis:');
   renderClan();
 }
-function openClanDetails(name){ // تفاصيل كلان بالاسم
+function openClanDetails(name){
   CLAN_VIEW={loading:true,name:name};
   document.getElementById('clanovl').classList.add('show');
   sendToLua('clandetails:'+name);
   renderClan();
 }
-function closeClan(){ document.getElementById('clanovl').classList.remove('show'); CLAN_VIEW=null; }
+function closeClan(){ document.getElementById('clanovl').classList.remove('show'); CLAN_VIEW=null; CLAN_SCREEN='main'; }
 
 function clanHeadColor(col){
   const c=(col&&/^#[0-9a-fA-F]{6}$/.test(col))?col:'#8757D4';
   document.getElementById('clanhead').style.background=`linear-gradient(180deg,${c},${c}bb)`;
 }
 
+// شريط إحصائية أنيق
+function clanStat(icon,label,val,col){
+  return `<div style="flex:1;min-width:80px;background:#17161e;border:1px solid #262433;border-radius:12px;padding:10px 8px;text-align:center">
+    <div style="font-size:18px">${icon}</div>
+    <div style="font-size:16px;font-weight:900;color:${col||'#fff'};margin-top:2px">${val}</div>
+    <div style="font-size:10.5px;color:var(--mut);margin-top:1px">${label}</div></div>`;
+}
+// صف عضو أنيق مع أفتار مبدئي (حرف)
+function clanMemberRow(mm,col,showActions){
+  const initial=(mm.name||'؟').trim().charAt(0).toUpperCase();
+  const lv=mm.level!=null?`<span style="font-size:11px;color:var(--or1);font-weight:800">Lv.${mm.level}</span>`:'';
+  let act='';
+  if(showActions&&!mm.isOwner){
+    act=`<span style="display:flex;gap:4px">
+      <button class="cbtn" style="padding:4px 8px;font-size:12px" title="نقل الملكية" onclick="clanAskTransfer('${esc(mm.name)}')">👑</button>
+      <button class="cbtn" style="padding:4px 8px;font-size:12px;background:#B4231C;color:#fff" title="طرد" onclick="clanAskKick('${esc(mm.name)}')">✕</button></span>`;
+  }
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#17161e;border:1px solid #23212e;border-radius:10px">
+    <span style="display:flex;align-items:center;gap:9px">
+      <span style="width:30px;height:30px;border-radius:50%;background:${col}33;border:1.5px solid ${col};display:flex;align-items:center;justify-content:center;font-weight:900;color:${col};font-size:14px">${esc(initial)}</span>
+      <span style="display:flex;flex-direction:column"><span style="font-weight:700">${esc(mm.name)} ${mm.isOwner?'👑':''}</span>${lv}</span>
+    </span>${act}</div>`;
+}
+
 function renderClan(){
   const body=document.getElementById('clanbody');
   const title=document.getElementById('clantitle');
-  // عرض تفاصيل كلان آخر
+
+  // ===== عرض تفاصيل كلان (من بروفايل شخص) =====
   if(CLAN_VIEW){
-    if(CLAN_VIEW.loading){ title.textContent='...'; body.innerHTML='<div class="csub">جاري التحميل...</div>'; return; }
-    const c=CLAN_VIEW;
+    if(CLAN_VIEW.loading){ title.textContent='...'; body.innerHTML='<div class="csub" style="text-align:center;padding:30px">جاري التحميل...</div>'; return; }
+    const c=CLAN_VIEW, col=(c.color&&/^#[0-9a-fA-F]{6}$/.test(c.color))?c.color:'#8757D4';
     clanHeadColor(c.color);
-    title.textContent=`🛡️ ${c.name} [${c.tag||''}]`;
-    let h=`<div class="crow"><span class="cl">👑 المالك</span><span class="cv">${esc(c.owner||'؟')}</span></div>`;
-    h+=`<div class="crow"><span class="cl">👥 الأعضاء</span><span class="cv">${c.count||0}</span></div>`;
+    title.innerHTML=`${c.emoji||'🛡️'} ${esc(c.name)} <span style="opacity:.8;font-size:14px">[${esc(c.tag||'')}]</span>`;
+    let h=`<div style="display:flex;gap:8px;margin-bottom:12px">
+      ${clanStat('👥','الأعضاء',c.count||0,col)}
+      ${clanStat('⭐','مستوى الكلان',c.clanLevel||1,'#F5C518')}
+      ${clanStat('🎮','ساعات',Math.round((c.clanMinutes||0)/60),'#4Cc38A')}</div>`;
+    h+=`<div class="crow"><span class="cl">👑 المالك</span><span class="cv">${esc(c.owner||'؟')}</span></div>`;
     h+=`<div class="crow"><span class="cl">📅 أُنشئ</span><span class="cv">${c.created?fmtDate(c.created):'—'}</span></div>`;
-    h+=`<div style="margin:8px 0"><div class="cl" style="font-size:12.5px;margin-bottom:4px">📝 الوصف</div><div class="cv" style="max-width:none;white-space:normal;text-align:right;font-weight:400">${esc(c.desc||'— لا يوجد —')}</div></div>`;
-    h+=`<div class="cl" style="font-size:12.5px;margin:8px 0 4px">القائمة</div>`;
-    h+='<div style="display:flex;flex-direction:column;gap:4px">';
-    (c.members||[]).forEach(mm=>{ h+=`<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#1a1922;border-radius:8px"><span>${esc(mm.name)}</span>${mm.isOwner?'<span style="color:#F5C518">👑</span>':''}</div>`; });
+    if(c.desc) h+=`<div style="margin:10px 0"><div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div><div style="background:#17161e;border:1px solid #23212e;border-radius:10px;padding:9px;white-space:normal;font-weight:400;font-size:13px">${esc(c.desc)}</div></div>`;
+    h+=`<div class="cl" style="font-size:12px;margin:10px 0 6px">👥 الأعضاء (${c.count||0})</div><div style="display:flex;flex-direction:column;gap:5px">`;
+    (c.members||[]).forEach(mm=>{ h+=clanMemberRow(mm,col,false); });
     h+='</div>';
     h+=`<div class="cbtns"><button class="cbtn" onclick="closeClan()">إغلاق</button></div>`;
     body.innerHTML=h;
     return;
   }
-  // كلاني أنا
+
   clanHeadColor(MY_CLAN?MY_CLAN.color:null);
-  if(!MY_CLAN){
-    title.textContent='🛡️ الكلانات';
-    let h='';
-    // دعواتي
-    if(MY_CLAN_INVITES.length){
-      h+=`<div class="cl" style="font-size:12.5px;margin-bottom:6px">📩 دعواتك</div>`;
-      MY_CLAN_INVITES.forEach(iv=>{
-        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#1a1922;border-radius:8px;margin-bottom:4px">
-          <span>${esc(iv.name)} <span style="color:var(--mut);font-size:12px">من ${esc(iv.byName||'')}</span></span>
-          <span><button class="cbtn pri" style="padding:4px 10px" onclick="clanRespond('${iv.clanId}',true)">قبول</button>
-          <button class="cbtn" style="padding:4px 10px" onclick="clanRespond('${iv.clanId}',false)">رفض</button></span></div>`;
-      });
-      h+='<div style="height:10px"></div>';
-    }
-    // إنشاء
-    h+=`<div class="cl" style="font-size:12.5px;margin-bottom:4px">إنشاء كلان</div>`;
-    h+=`<input id="clan_name" placeholder="اسم الكلان (2-20)" maxlength="20" style="width:100%;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;margin-bottom:6px;outline:none;font-family:inherit">`;
-    h+=`<div style="display:flex;gap:6px;margin-bottom:6px"><input id="clan_tag" placeholder="التاق (2-5)" maxlength="5" style="flex:1;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;outline:none;font-family:inherit"><input id="clan_color" type="color" value="#F7820E" style="width:46px;height:38px;background:none;border:none;border-radius:8px;cursor:pointer"></div>`;
-    h+=`<button class="cbtn pri" style="width:100%" onclick="clanCreate()">إنشاء الكلان 🛡️</button>`;
+
+  // ===== شاشة الدعوة: قائمة المتصلين =====
+  if(CLAN_SCREEN==='invite' && MY_CLAN){
+    title.innerHTML='➕ دعوة لاعب';
+    const myMembers=(MY_CLAN.members||[]).map(m=>m.name.toLowerCase());
+    // المتصلين اللي مو بكلان ولا بكلاني
+    const candidates=MEMBERS.filter(m=>!m.srv && !m.isMe && (!m.clan||m.clan===false||m.clan==='') && !myMembers.includes((m.name||'').toLowerCase()));
+    let h=`<div class="csub" style="margin-bottom:8px">اختر لاعب متصل بدون كلان لدعوته:</div>`;
+    h+=`<input id="inv_search" placeholder="🔍 ابحث..." oninput="renderInviteList()" style="width:100%;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;margin-bottom:8px;outline:none;font-family:inherit">`;
+    h+=`<div id="inv_list" style="display:flex;flex-direction:column;gap:5px;max-height:230px;overflow-y:auto"></div>`;
+    h+=`<div class="cbtns"><button class="cbtn" onclick="clanBack()">رجوع</button></div>`;
+    body.innerHTML=h;
+    renderInviteList();
+    return;
+  }
+
+  // ===== شاشة التعديل =====
+  if(CLAN_SCREEN==='edit' && MY_CLAN){
+    title.innerHTML='✏️ تعديل الكلان';
+    const col=MY_CLAN.color||'#F7820E';
+    let h=`<div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div>
+      <textarea id="edit_desc" maxlength="120" placeholder="وصف الكلان..." style="width:100%;height:60px;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;resize:none;outline:none;font-family:inherit">${esc(MY_CLAN.desc||'')}</textarea>`;
+    h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">🎨 لون الكلان</div>
+      <input id="edit_color" type="color" value="${col}" style="width:100%;height:38px;background:none;border:1px solid #333;border-radius:8px;cursor:pointer">`;
+    h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">${MY_CLAN.emoji||'🛡️'} إيموجي الكلان</div>`;
+    h+=clanEmojiGrid(MY_CLAN.emoji);
+    h+=`<div class="cbtns"><button class="cbtn pri" onclick="clanSaveEdit()">حفظ</button><button class="cbtn" onclick="clanBack()">رجوع</button></div>`;
     body.innerHTML=h;
     return;
   }
-  // عندي كلان
-  title.textContent=`🛡️ ${MY_CLAN.name} [${MY_CLAN.tag||''}]`;
-  let h=`<div class="crow"><span class="cl">👑 المالك</span><span class="cv">${esc(MY_CLAN.owner||'؟')}${MY_IS_OWNER?' (أنت)':''}</span></div>`;
-  h+=`<div class="crow"><span class="cl">👥 الأعضاء</span><span class="cv">${MY_CLAN.count||0}</span></div>`;
-  h+=`<div class="crow"><span class="cl">📅 أُنشئ</span><span class="cv">${MY_CLAN.created?fmtDate(MY_CLAN.created):'—'}</span></div>`;
-  h+=`<div style="margin:8px 0"><div class="cl" style="font-size:12.5px;margin-bottom:4px">📝 الوصف</div><div class="cv" style="max-width:none;white-space:normal;text-align:right;font-weight:400">${esc(MY_CLAN.desc||'— لا يوجد —')}</div></div>`;
-  // الأعضاء + طرد (للمالك)
-  h+=`<div class="cl" style="font-size:12.5px;margin:8px 0 4px">القائمة</div><div style="display:flex;flex-direction:column;gap:4px">`;
-  (MY_CLAN.members||[]).forEach(mm=>{
-    let act='';
-    if(MY_IS_OWNER&&!mm.isOwner){
-      act=`<span><button class="cbtn" style="padding:3px 8px;font-size:12px" onclick="clanTransfer('${esc(mm.name)}')">👑</button>
-      <button class="cbtn" style="padding:3px 8px;font-size:12px;background:#B4231C;color:#fff" onclick="clanKick('${esc(mm.name)}')">طرد</button></span>`;
+
+  // ===== لا يوجد كلان: دعوات + إنشاء =====
+  if(!MY_CLAN){
+    title.innerHTML='🛡️ الكلانات';
+    let h='';
+    if(MY_CLAN_INVITES.length){
+      h+=`<div class="cl" style="font-size:12px;margin-bottom:6px">📩 دعواتك (${MY_CLAN_INVITES.length})</div>`;
+      MY_CLAN_INVITES.forEach(iv=>{
+        const col=(iv.color&&/^#[0-9a-fA-F]{6}$/.test(iv.color))?iv.color:'#8757D4';
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#17161e;border:1px solid ${col}55;border-radius:10px;margin-bottom:5px">
+          <span><b style="color:${col}">${esc(iv.name)}</b> <span style="color:var(--mut);font-size:11.5px">[${esc(iv.tag||'')}] · من ${esc(iv.byName||'')}</span></span>
+          <span style="display:flex;gap:5px"><button class="cbtn pri" style="padding:5px 12px" onclick="clanRespond('${iv.clanId}',true)">قبول</button>
+          <button class="cbtn" style="padding:5px 10px" onclick="clanRespond('${iv.clanId}',false)">✕</button></span></div>`;
+      });
+      h+='<div style="height:14px"></div>';
     }
-    h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#1a1922;border-radius:8px"><span>${esc(mm.name)} ${mm.isOwner?'👑':''}</span>${act}</div>`;
-  });
+    h+=`<div class="cl" style="font-size:12px;margin-bottom:6px">✨ إنشاء كلان جديد</div>`;
+    h+=`<input id="clan_name" placeholder="اسم الكلان (2-20)" maxlength="20" style="width:100%;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;margin-bottom:6px;outline:none;font-family:inherit">`;
+    h+=`<div style="display:flex;gap:6px;margin-bottom:8px"><input id="clan_tag" placeholder="التاق (2-5)" maxlength="5" style="flex:1;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;outline:none;font-family:inherit"><input id="clan_color" type="color" value="#F7820E" style="width:52px;height:40px;background:none;border:1px solid #333;border-radius:8px;cursor:pointer"></div>`;
+    h+=`<div class="cl" style="font-size:12px;margin-bottom:5px">اختر إيموجي (غير المأخوذة):</div>`;
+    h+=clanEmojiGrid(CLAN_PICK_EMOJI);
+    h+=`<button class="cbtn pri" style="width:100%;margin-top:6px" onclick="clanCreate()">إنشاء الكلان 🛡️</button>`;
+    body.innerHTML=h;
+    return;
+  }
+
+  // ===== عندي كلان: العرض الرئيسي =====
+  const col=MY_CLAN.color||'#8757D4';
+  title.innerHTML=`${MY_CLAN.emoji||'🛡️'} ${esc(MY_CLAN.name)} <span style="opacity:.8;font-size:14px">[${esc(MY_CLAN.tag||'')}]</span>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:12px">
+    ${clanStat('👥','الأعضاء',MY_CLAN.count||0,col)}
+    ${clanStat('⭐','المستوى',MY_CLAN.clanLevel||1,'#F5C518')}
+    ${clanStat('🎮','ساعات',Math.round((MY_CLAN.clanMinutes||0)/60),'#4Cc38A')}</div>`;
+  h+=`<div class="crow"><span class="cl">👑 المالك</span><span class="cv">${esc(MY_CLAN.owner||'؟')}${MY_IS_OWNER?' <span style="color:var(--or1)">(أنت)</span>':''}</span></div>`;
+  h+=`<div class="crow"><span class="cl">📅 أُنشئ</span><span class="cv">${MY_CLAN.created?fmtDate(MY_CLAN.created):'—'}</span></div>`;
+  if(MY_CLAN.desc) h+=`<div style="margin:10px 0"><div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div><div style="background:#17161e;border:1px solid #23212e;border-radius:10px;padding:9px;white-space:normal;font-weight:400;font-size:13px">${esc(MY_CLAN.desc)}</div></div>`;
+  h+=`<div class="cl" style="font-size:12px;margin:10px 0 6px">👥 الأعضاء (${MY_CLAN.count||0})</div><div style="display:flex;flex-direction:column;gap:5px">`;
+  (MY_CLAN.members||[]).forEach(mm=>{ h+=clanMemberRow(mm,col,MY_IS_OWNER); });
   h+='</div>';
-  // أزرار الإدارة
   h+='<div class="cbtns" style="flex-wrap:wrap;gap:6px">';
   if(MY_IS_OWNER){
-    h+=`<button class="cbtn pri" onclick="clanInvitePrompt()">➕ دعوة</button>`;
-    h+=`<button class="cbtn" onclick="clanEditPrompt()">✏️ تعديل</button>`;
-    h+=`<button class="cbtn" style="background:#B4231C;color:#fff" onclick="clanDelete()">🗑️ حذف</button>`;
+    h+=`<button class="cbtn pri" onclick="clanGoInvite()">➕ دعوة</button>`;
+    h+=`<button class="cbtn" onclick="clanGoEdit()">✏️ تعديل</button>`;
+    h+=`<button class="cbtn" style="background:#B4231C;color:#fff" onclick="clanAskDelete()">🗑️ حذف</button>`;
   } else {
-    h+=`<button class="cbtn" style="background:#B4231C;color:#fff" onclick="clanLeave()">🚪 مغادرة</button>`;
+    h+=`<button class="cbtn" style="background:#B4231C;color:#fff" onclick="clanAskLeave()">🚪 مغادرة</button>`;
   }
   h+=`<button class="cbtn" onclick="closeClan()">إغلاق</button></div>`;
   body.innerHTML=h;
 }
 
+// شبكة اختيار الإيموجي
+function clanEmojiGrid(current){
+  CLAN_PICK_EMOJI=current||CLAN_PICK_EMOJI;
+  let h='<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-bottom:6px">';
+  (CLAN_EMOJIS_ALL.length?CLAN_EMOJIS_ALL:['🛡️']).forEach(em=>{
+    const taken=CLAN_EMOJIS_TAKEN.includes(em)&&em!==current;
+    const sel=em===CLAN_PICK_EMOJI;
+    h+=`<button ${taken?'disabled':''} onclick="clanPickEmoji('${em}')" style="aspect-ratio:1;font-size:18px;border-radius:8px;cursor:${taken?'not-allowed':'pointer'};
+      background:${sel?'var(--or1)':'#17161e'};border:1px solid ${sel?'var(--or1)':'#262433'};opacity:${taken?'.28':'1'}">${em}</button>`;
+  });
+  h+='</div>';
+  return h;
+}
+function clanPickEmoji(em){ CLAN_PICK_EMOJI=em; renderClan(); }
+
+// قائمة الدعوة (المتصلين)
+function renderInviteList(){
+  const box=document.getElementById('inv_list'); if(!box) return;
+  const q=(document.getElementById('inv_search')?.value||'').toLowerCase();
+  const myMembers=(MY_CLAN.members||[]).map(m=>m.name.toLowerCase());
+  let cands=MEMBERS.filter(m=>!m.srv && !m.isMe && (!m.clan||m.clan===false||m.clan==='') && !myMembers.includes((m.name||'').toLowerCase()));
+  if(q) cands=cands.filter(m=>(m.name||'').toLowerCase().includes(q));
+  if(!cands.length){ box.innerHTML='<div class="csub" style="text-align:center;padding:16px;color:var(--mut)">لا يوجد لاعبين متاحين للدعوة الآن</div>'; return; }
+  box.innerHTML=cands.map(m=>{
+    const initial=(m.name||'؟').charAt(0).toUpperCase();
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#17161e;border:1px solid #23212e;border-radius:10px">
+      <span style="display:flex;align-items:center;gap:9px"><span style="width:28px;height:28px;border-radius:50%;background:#F7820E33;border:1.5px solid #F7820E;display:flex;align-items:center;justify-content:center;font-weight:900;color:#F7820E">${esc(initial)}</span>${esc(m.name)}</span>
+      <button class="cbtn pri" style="padding:5px 14px" onclick="clanDoInvite('${esc(m.name)}')">دعوة</button></div>`;
+  }).join('');
+}
+
+// تنقّل الشاشات
+function clanGoInvite(){ CLAN_SCREEN='invite'; renderClan(); }
+function clanGoEdit(){ CLAN_SCREEN='edit'; renderClan(); }
+function clanBack(){ CLAN_SCREEN='main'; renderClan(); }
+
+// عمليات (كلها بدون prompt/confirm)
 function clanCreate(){
   const n=(document.getElementById('clan_name').value||'').trim();
   const t=(document.getElementById('clan_tag').value||'').trim();
   const c=document.getElementById('clan_color').value||'#F7820E';
   if(!n){toast('اكتب اسم الكلان');return;}
-  sendToLua('clancreate:'+JSON.stringify({clanName:n,tag:t,color:c}));
+  sendToLua('clancreate:'+JSON.stringify({clanName:n,tag:t,color:c,emoji:CLAN_PICK_EMOJI}));
   toast('جاري إنشاء الكلان...');
 }
-function clanInvitePrompt(){ const n=prompt('اسم اللاعب للدعوة:'); if(n&&n.trim()){ sendToLua('claninvite:'+n.trim()); toast('جاري إرسال الدعوة...'); } }
-function clanKick(name){ if(confirm('طرد '+name+'؟')){ sendToLua('clankick:'+name); toast('جاري الطرد...'); } }
-function clanTransfer(name){ if(confirm('نقل ملكية الكلان لـ '+name+'؟')){ sendToLua('clantransfer:'+name); toast('جاري النقل...'); } }
-function clanLeave(){ if(confirm('مغادرة الكلان؟')){ sendToLua('clanleave:'); toast('جاري المغادرة...'); } }
-function clanDelete(){ if(confirm('حذف الكلان نهائياً؟')){ sendToLua('clandelete:'); toast('جاري الحذف...'); } }
-function clanRespond(clanId,accept){ sendToLua('clanrespond:'+JSON.stringify({clanId:clanId,accept:accept})); toast(accept?'جاري الانضمام...':'تم الرفض'); }
-function clanEditPrompt(){
-  const d=prompt('وصف الكلان (فاضي = بدون تغيير):', MY_CLAN?MY_CLAN.desc||'':'');
-  if(d===null) return;
-  sendToLua('clanedit:'+JSON.stringify({desc:d}));
-  toast('جاري الحفظ...');
+function clanDoInvite(name){ sendToLua('claninvite:'+name); toast('جاري إرسال الدعوة لـ '+name+'...'); }
+function clanSaveEdit(){
+  const d=(document.getElementById('edit_desc').value||'').trim();
+  const c=document.getElementById('edit_color').value||'#F7820E';
+  sendToLua('clanedit:'+JSON.stringify({desc:d,color:c,emoji:CLAN_PICK_EMOJI}));
+  toast('جاري الحفظ...'); CLAN_SCREEN='main';
 }
+function clanRespond(clanId,accept){ sendToLua('clanrespond:'+JSON.stringify({clanId:clanId,accept:accept})); toast(accept?'جاري الانضمام...':'تم الرفض'); }
+
+// تأكيدات إنلاين (بديل confirm) — نستخدم شريط تأكيد داخل النافذة
+function clanConfirmBar(msg,onYes){
+  const body=document.getElementById('clanbody');
+  const bar=document.createElement('div');
+  bar.style.cssText='position:sticky;bottom:0;margin-top:10px;background:#241016;border:1px solid #B4231C;border-radius:12px;padding:10px;text-align:center';
+  bar.innerHTML=`<div style="margin-bottom:8px;font-size:13px">${msg}</div>`;
+  const yes=document.createElement('button'); yes.className='cbtn'; yes.style.cssText='background:#B4231C;color:#fff;margin-left:6px'; yes.textContent='تأكيد';
+  const no=document.createElement('button'); no.className='cbtn'; no.textContent='إلغاء';
+  yes.onclick=()=>{ onYes(); };
+  no.onclick=()=>{ renderClan(); };
+  bar.appendChild(yes); bar.appendChild(no);
+  body.appendChild(bar); bar.scrollIntoView({behavior:'smooth'});
+}
+function clanAskKick(name){ clanConfirmBar('طرد <b>'+esc(name)+'</b> من الكلان؟',()=>{ sendToLua('clankick:'+name); toast('جاري الطرد...'); }); }
+function clanAskTransfer(name){ clanConfirmBar('نقل ملكية الكلان لـ <b>'+esc(name)+'</b>؟',()=>{ sendToLua('clantransfer:'+name); toast('جاري النقل...'); }); }
+function clanAskLeave(){ clanConfirmBar('مغادرة الكلان؟',()=>{ sendToLua('clanleave:'); toast('جاري المغادرة...'); }); }
+function clanAskDelete(){ clanConfirmBar('حذف الكلان <b>نهائياً</b>؟ لا يمكن التراجع.',()=>{ sendToLua('clandelete:'); toast('جاري الحذف...'); }); }
 
 const HANDLERS = {
   dcMessage: (m)=>{ m=m||{}; addMessage({...m, text:(m.text===false?undefined:m.text), sticker:(m.sticker===false?undefined:m.sticker), avatar:(m.avatar===false?undefined:m.avatar), rankColor:(m.rankColor===false?undefined:m.rankColor)}); },
@@ -720,6 +829,7 @@ const HANDLERS = {
     else { toast('تعذّر تسجيل اللايك'); }
   },
   dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_CLAN_INVITES=d.invites||[]; if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
+  dcClanEmojis:(d)=>{ d=d||{}; CLAN_EMOJIS_ALL=d.all||[]; CLAN_EMOJIS_TAKEN=d.taken||[]; if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find(e=>!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
     if(d.ok){ toast(d.msg||'تم ✓'); sendToLua('clanmine:'); }
