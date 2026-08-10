@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.9", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1980,6 +1980,83 @@ local __dcOk, DriveChat = pcall(function()
   end
 
   -- حفظ وصف البروفايل (المرحلة ب)
+  -- ترميز URL للأسماء (مسافات/رموز عربية) — ضروري لطلبات GET
+  local function urlEncode(s)
+    s = tostring(s or "")
+    return (s:gsub("[^%w%-_%.~]", function(c)
+      return string.format("%%%02X", string.byte(c))
+    end))
+  end
+
+  -- ===== جسر الكلانات =====
+  -- POST لأي endpoint كلان مع اسمي، والرد يرجع للصفحة عبر dcClanAck
+  local function clanPost(endpoint, extra, okMsg)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local obj = extra or {}
+    obj.name = myName()
+    local parts = {}
+    for k, v in pairs(obj) do
+      if type(v) == 'boolean' then
+        parts[#parts+1] = jsonStr(k) .. ':' .. (v and 'true' or 'false')
+      else
+        parts[#parts+1] = jsonStr(k) .. ':' .. jsonStr(tostring(v))
+      end
+    end
+    local body = '{' .. table.concat(parts, ',') .. '}'
+    pcall(function()
+      web.post(base .. endpoint, { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        local ok, reason = false, nil
+        if not err and resp and resp.body then
+          pcall(function() local d = JSON.parse(resp.body); ok = d and d.ok; reason = d and d.reason end)
+        end
+        if S.browser and S.ready then
+          jsend('dcClanAck', { ok = ok and true or false, reason = reason or false, msg = okMsg or false })
+        end
+        -- بعد أي عملية، حدّث حالة كلاني
+        if ok then clanFetchMine() end
+      end)
+    end)
+  end
+
+  -- جلب حالة كلاني + دعواتي → dcClanMine
+  function clanFetchMine()
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local url = base .. '/drive/clan/mine?name=' .. urlEncode(myName())
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and S.browser and S.ready then
+              jsend('dcClanMine', { clan = d.clan or false, isOwner = d.isOwner or false, invites = d.invites or {} })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  -- تفاصيل كلان بالاسم → dcClanDetails
+  local function clanFetchDetails(q)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local url = base .. '/drive/clan/details?q=' .. urlEncode(q)
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and S.browser and S.ready then
+              jsend('dcClanDetails', { clan = d.clan or false })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
   local function sendDescription(txt)
     if RANKS_URL == "" then return end
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
@@ -2097,6 +2174,29 @@ local __dcOk, DriveChat = pcall(function()
     if data:sub(1, 5) == 'desc:' then
       local txt = data:sub(6)
       sendDescription(txt)
+      return
+    end
+    -- ===== أوامر الكلانات =====
+    if data:sub(1, 9) == 'clanmine:' then clanFetchMine(); return end
+    if data:sub(1, 12) == 'clandetails:' then clanFetchDetails(data:sub(13)); return end
+    if data:sub(1, 11) == 'clancreate:' then
+      local ok, obj = pcall(function() return JSON.parse(data:sub(12)) end)
+      if ok and obj then clanPost('/drive/clan/create', { clanName = obj.clanName, tag = obj.tag, color = obj.color }, 'تم إنشاء الكلان 🛡️') end
+      return
+    end
+    if data:sub(1, 11) == 'claninvite:' then clanPost('/drive/clan/invite', { targetName = data:sub(12) }, 'تم إرسال الدعوة 📩'); return end
+    if data:sub(1, 9) == 'clankick:' then clanPost('/drive/clan/kick', { targetName = data:sub(10) }, 'تم الطرد'); return end
+    if data:sub(1, 13) == 'clantransfer:' then clanPost('/drive/clan/transfer', { targetName = data:sub(14) }, 'تم نقل الملكية 👑'); return end
+    if data:sub(1, 10) == 'clanleave:' then clanPost('/drive/clan/leave', {}, 'غادرت الكلان'); return end
+    if data:sub(1, 11) == 'clandelete:' then clanPost('/drive/clan/delete', {}, 'تم حذف الكلان'); return end
+    if data:sub(1, 12) == 'clanrespond:' then
+      local ok, obj = pcall(function() return JSON.parse(data:sub(13)) end)
+      if ok and obj then clanPost('/drive/clan/respond', { clanId = obj.clanId, accept = obj.accept and true or false }, obj.accept and 'انضممت للكلان ✅' or 'تم الرفض') end
+      return
+    end
+    if data:sub(1, 9) == 'clanedit:' then
+      local ok, obj = pcall(function() return JSON.parse(data:sub(10)) end)
+      if ok and obj then clanPost('/drive/clan/edit', { desc = obj.desc, color = obj.color }, 'تم الحفظ ✓') end
       return
     end
     if data:sub(1, 6) == 'notif:' then cStor.dc_notif = (data:sub(7) == '1'); return end
@@ -2490,6 +2590,9 @@ local __dcOk, DriveChat = pcall(function()
               firstSeen = (r and r.firstSeen) or false,           -- أول دخول (ms)
               desc = (r and r.desc) or false,                     -- وصف البروفايل
               likes = (r and r.likes) or 0,                       -- عدد اللايكات
+              clan = (r and r.clan) or false,                     -- اسم الكلان
+              clanTag = (r and r.clanTag) or false,               -- تاق الكلان
+              clanColor = (r and r.clanColor) or false,           -- لون الكلان
             }
           end
         end
@@ -2698,6 +2801,17 @@ local __dtOk, DriveTags = pcall(function()
     if not ok or not r or not r.level or r.level <= 0 then return nil end
     return r.level
   end
+  -- كلان اللاعب للتاق: يرجع (tag, color) أو nil
+  local function clanInfo(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.clanTag or r.clanTag == '' then return nil end
+    local col = rgbm(0.53, 0.34, 0.83, 1)   -- بنفسجي افتراضي للكلان
+    local hex = r.clanColor
+    if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
+      col = rgbm((tonumber(hex:sub(2,3),16) or 135)/255, (tonumber(hex:sub(4,5),16) or 87)/255, (tonumber(hex:sub(6,7),16) or 212)/255, 1)
+    end
+    return tostring(r.clanTag), col
+  end
   local function rankInfo(name)
     local ok, r = pcall(function() return DriveChat.getRank(name) end)
     if not ok or not r or not r.rank or r.rank == '' then return nil end
@@ -2772,8 +2886,17 @@ local __dtOk, DriveTags = pcall(function()
       lvW = lvSz.x + size * 0.6
       lvH = rkSz and pillH or (lvSz.y + size * 0.28)
     end
-    local cw = nmSz.x + (fl and (flS + gap) or 0) + (rankText and (gap + pillW) or 0) + (lvText and (gap + lvW) or 0)
-    local ch = math.max(nmSz.y, flS, pillH, lvH)
+    -- كلان (تاق) — حبّة بلون الكلان بعد اللفل
+    local clTag, clCol = clanInfo(nm)
+    local clText, clW, clH, clSz = nil, 0, 0, nil
+    if clTag then
+      clText = "[" .. clTag .. "]"
+      clSz = meas(clText, rankSize)
+      clW = clSz.x + size * 0.6
+      clH = (lvH > 0) and lvH or (clSz.y + size * 0.28)
+    end
+    local cw = nmSz.x + (fl and (flS + gap) or 0) + (rankText and (gap + pillW) or 0) + (lvText and (gap + lvW) or 0) + (clText and (gap + clW) or 0)
+    local ch = math.max(nmSz.y, flS, pillH, lvH, clH)
     local padX, padY = size * 0.45, size * 0.26
     local x0 = sp.x - (cw + padX * 2) * 0.5
     local y0 = sp.y - (ch + padY * 2)   -- الصندوق يجلس فوق نقطة الإسقاط
@@ -2815,6 +2938,17 @@ local __dtOk, DriveTags = pcall(function()
         rgbm(ACC2.r, ACC2.g, ACC2.b, 0.9 * alpha), lvH * 0.5, nil, 1.4)
       ui.setCursor(vec2(x + (lvW - lvSz.x) * 0.5, ly0 + (lvH - lvSz.y) * 0.5))
       ui.dwriteText(lvText, rankSize, rgbm(ACC2.r, ACC2.g, ACC2.b, alpha))
+      x = x + lvW
+    end
+    if clText then
+      x = x + gap
+      local cy0 = yMid - clH * 0.5
+      ui.drawRectFilled(vec2(x, cy0), vec2(x + clW, cy0 + clH),
+        rgbm(clCol.r * 0.22, clCol.g * 0.22, clCol.b * 0.22, 0.95 * alpha), clH * 0.5)
+      ui.drawRect(vec2(x, cy0), vec2(x + clW, cy0 + clH),
+        rgbm(clCol.r, clCol.g, clCol.b, 0.9 * alpha), clH * 0.5, nil, 1.4)
+      ui.setCursor(vec2(x + (clW - clSz.x) * 0.5, cy0 + (clH - clSz.y) * 0.5))
+      ui.dwriteText(clText, rankSize, rgbm(clCol.r, clCol.g, clCol.b, alpha))
     end
   end
 
@@ -2981,7 +3115,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.9 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.0 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
