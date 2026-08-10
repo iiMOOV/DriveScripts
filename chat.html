@@ -213,6 +213,8 @@ body{display:flex;align-items:center;justify-content:center}
         <div class="cname" id="profname"></div>
         <div style="height:8px"></div>
         <div class="crow"><span class="cl">🏆 المستوى</span><span class="cv" id="proflevel"></span></div>
+        <div class="crow"><span class="cl">👍 الإعجابات</span><span class="cv" id="proflikes"></span></div>
+        <div class="crow"><span class="cl">🟢 الحالة</span><span class="cv" id="profonline"></span></div>
         <div class="crow"><span class="cl">🔗 الديسكورد</span><span class="cv" id="profdisc"></span></div>
         <div class="crow"><span class="cl">🚗 السيارة</span><span class="cv" id="profcar"></span></div>
         <div class="crow"><span class="cl">📅 أول دخول</span><span class="cv" id="proffirst"></span></div>
@@ -220,7 +222,16 @@ body{display:flex;align-items:center;justify-content:center}
         <div class="crow"><span class="cl">⏱️ مدة التواجد الآن</span><span class="cv" id="profdur"></span></div>
         <div class="crow"><span class="cl">📍 بعده عنك</span><span class="cv" id="profdist"></span></div>
         <div class="crow"><span class="cl">💨 السرعة</span><span class="cv" id="profspeed"></span></div>
+        <div id="profdescwrap" style="margin-top:8px">
+          <div class="cl" style="font-size:12.5px;margin-bottom:4px">📝 الوصف</div>
+          <div id="profdescview" class="cv" style="max-width:none;white-space:normal;text-align:right;color:var(--tx);font-weight:400"></div>
+          <div id="profdescedit" style="display:none">
+            <textarea id="descinput" maxlength="120" placeholder="اكتب وصفك (١٢٠ حرف)..." style="width:100%;height:56px;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;resize:none;outline:none;font-family:inherit"></textarea>
+            <button class="cbtn pri" style="width:100%;margin-top:6px" onclick="saveDesc()">حفظ الوصف</button>
+          </div>
+        </div>
         <div class="cbtns">
+          <button class="cbtn pri" id="proflike">👍 لايك</button>
           <button class="cbtn pri" id="profmention">@ منشن</button>
           <button class="cbtn" onclick="closeProfile()">إغلاق</button>
         </div>
@@ -373,6 +384,11 @@ function openProfile(name){
   btn.onclick=()=>{const i=document.getElementById('msgin');i.value+='@'+name+' ';closeProfile();i.focus();};
 }
 function closeProfile(){PROF_NAME=null;document.getElementById('profovl').classList.remove('show');}
+function saveDesc(){
+  const ta=document.getElementById('descinput');
+  sendToLua('desc:'+(ta.value||'').trim());
+  toast('جاري حفظ الوصف...');
+}
 function refreshProfile(){
   if(!PROF_NAME) return;
   const m=memberByName(PROF_NAME);
@@ -396,6 +412,26 @@ function refreshProfile(){
   document.getElementById('profdur').textContent=fmtDur(liveDur);
   document.getElementById('profdist').textContent=m.isMe?'—':fmtDist(m.dist);
   document.getElementById('profspeed').textContent=(m.speed!=null?m.speed:0)+' كم/س';
+  // الإعجابات
+  document.getElementById('proflikes').textContent=(Number(m.likes)||0)+' 👍';
+  // الحالة (أونلاين لأنه بالقائمة الآن، وإلا آخر ظهور)
+  document.getElementById('profonline').textContent='🟢 متصل الآن';
+  // الوصف: عرض للجميع، وتحرير لصاحب البروفايل
+  const dv=document.getElementById('profdescview'), de=document.getElementById('profdescedit');
+  const desc=(m.desc&&m.desc!==false)?String(m.desc):'';
+  dv.textContent=desc||'— لا يوجد وصف —';
+  if(m.isMe && m.discord){
+    de.style.display='block';
+    const ta=document.getElementById('descinput');
+    if(document.activeElement!==ta) ta.value=desc;   // ما نكسر الكتابة الجارية
+  } else { de.style.display='none'; }
+  // زر اللايك: يختفي على بروفايلك، ويتعطّل لو ما أنت مربوط
+  const lk=document.getElementById('proflike');
+  if(m.isMe){ lk.style.display='none'; }
+  else {
+    lk.style.display='';
+    lk.onclick=()=>{ sendToLua('like:'+m.name); lk.disabled=true; lk.textContent='...'; setTimeout(()=>{lk.disabled=false;},1500); };
+  }
   // بروفايلك أنت + غير مرتبط -> زر يبدأ الربط مباشرة
   const mb=document.getElementById('profmention');
   if(m.isMe && !m.discord){
@@ -517,6 +553,15 @@ const HANDLERS = {
   dcFocus:   ()=>{ setTimeout(()=>document.getElementById('msgin').focus(),30); },
   dcBlur:    ()=>{ try{document.activeElement.blur();}catch(e){} closeProfile(); closeAdmin(); if(curPanel)togglePanel(curPanel); },
   dcAdminAck:(d)=>{ d=d||{}; if(d.ok)toast('تم إرسال رسالتك للإدارة ✓'); else toast('تعذر الإرسال — كلم الإدارة بالديسكورد'); },
+  dcLikeAck:(d)=>{ d=d||{};
+    if(d.ok){ toast('تم اللايك 👍 (المجموع: '+(d.likes||0)+')'); }
+    else if(d.reason==='already'){ toast('سبق وسويت لايك لهذا اللاعب'); }
+    else if(d.reason==='self'){ toast('ما تقدر تسوي لايك لنفسك'); }
+    else if(d.reason==='liker_not_linked'){ toast('اربط حسابك أول (/link) عشان تسوي لايك'); }
+    else if(d.reason==='target_not_linked'){ toast('هذا اللاعب غير مربوط بالديسكورد'); }
+    else { toast('تعذّر تسجيل اللايك'); }
+  },
+  dcDescAck:(d)=>{ d=d||{}; if(d.ok)toast('تم حفظ الوصف ✓'); else toast('تعذّر حفظ الوصف — اربط حسابك أول'); },
 };
 window.DriveChat = HANDLERS;
 
