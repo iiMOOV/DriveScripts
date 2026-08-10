@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v5.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v5.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1828,7 +1828,7 @@ local __dcOk, DriveChat = pcall(function()
     open = false, wantsKbd = false,
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
-    sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), szRight = 0, sizeLoaded = false,
+    sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), sizeLoaded = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {},
     seen = {}, jsMode = false, acked = false, readyAt = 0,
     inputSaved = false, savedInput = nil,
@@ -2488,6 +2488,12 @@ local __dcOk, DriveChat = pcall(function()
     -- نافذة الشات (الشات مفتوح)
     if S.open and not S.browser then S.open = false; S.wantsKbd = false end
     if S.open and S.browser then
+      if not S.sizeLoaded then
+        S.sizeLoaded = true
+        if (cStor.dc_w or 0) >= 480 and (cStor.dc_h or 0) >= 360 then
+          S.W = cStor.dc_w; S.H = cStor.dc_h
+        end
+      end
       if not S.pos then
         if cStor.dc_posX >= 0 and cStor.dc_posY >= 0 then
           S.pos = vec2(cStor.dc_posX, cStor.dc_posY)
@@ -2516,9 +2522,42 @@ local __dcOk, DriveChat = pcall(function()
         end
       end
 
+      -- تحجيم من الزاوية السفلية اليسرى (RTL) — منطقة 22×22
+      local GRIP = 22
+      local gripMin = vec2(0, S.H - GRIP)
+      local gripMax = vec2(GRIP, S.H)
+      if cClicked and not S.dragging and not S.sizing and inRect2(clp, gripMin, gripMax) then
+        S.sizing = true; S.szStart = cmp:clone(); S.szWH = vec2(S.W, S.H)
+      end
+      if S.sizing then
+        if ui.mouseDown(ui.MouseButton.Left) then
+          -- السحب لليسار يكبّر العرض، ولتحت يكبّر الارتفاع؛ ونثبّت الحافة اليمنى
+          local dx = S.szStart.x - cmp.x
+          local dy = cmp.y - S.szStart.y
+          local rightEdge = S.pos.x + S.szWH.x
+          local newW = math.max(480, math.min(1400, S.szWH.x + dx))
+          local newH = math.max(360, math.min(950, S.szWH.y + dy))
+          S.W = newW; S.H = newH
+          S.pos.x = rightEdge - S.W   -- ثبّت الحافة اليمنى
+          if S.pos.x < 0 then S.pos.x = 0 end
+        else
+          S.sizing = false
+          cStor.dc_w = S.W; cStor.dc_h = S.H
+          cStor.dc_posX = S.pos.x; cStor.dc_posY = S.pos.y
+        end
+      end
+
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
-        if not S.dragging then
+        -- علامة التحجيم (زاوية سفلية يسرى)
+        do
+          local gy = S.H
+          for gi = 1, 3 do
+            local o = gi * 4
+            ui.drawLine(vec2(2, gy - o), vec2(o, gy - 2), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 1.5)
+          end
+        end
+        if not S.dragging and not S.sizing then
           local uis = ac.getUI()
           local mlp = ui.mouseLocalPos()
           S.browser:mouseInput(vec2(mlp.x / S.W, mlp.y / S.H),
@@ -2532,9 +2571,8 @@ local __dcOk, DriveChat = pcall(function()
         end
       end)
 
-
-      -- كليك برا النافذة = قفل (ما نقفل وقت التحجيم/السحب)
-      if cClicked and not S.dragging and not S.sizing and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
+      -- كليك برا النافذة = قفل
+      if cClicked and not S.dragging and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
         closeChat()
       end
       -- Escape = قفل
@@ -2857,7 +2895,7 @@ local function drawChatHint()
   local w, h = 280 * k, 50 * k
   local x = (screen.x - w) * 0.5
   local y = screen.y - h - 16
-  ui.transparentWindow("driveChatHint", vec2(x, y), vec2(w, h), true, true, function()
+  ui.transparentWindow("driveChatHint", vec2(x, y), vec2(w, h), true, function()
     local pulse = 0.55 + 0.45 * math.abs(math.sin(Core.clock * 2))
     -- زر شفاف يغطي التلميح كامل — الضغط عليه يفتح الشات (مثل زر C)
     local clicked = ui.invisibleButton("##chatHintBtn", vec2(w, h))
@@ -2924,7 +2962,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v5.6 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v5.3 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
