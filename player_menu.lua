@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1829,7 +1829,7 @@ local __dcOk, DriveChat = pcall(function()
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
     sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), szRight = 0, sizeLoaded = false,
-    lastPush = 0, lastRanks = -999, ranks = {}, joined = {},
+    lastPush = 0, lastRanks = -999, ranks = {}, joined = {}, msgId = 0,
     seen = {}, jsMode = false, acked = false, readyAt = 0,
     inputSaved = false, savedInput = nil,
     log = {}, chatReveal = 1, logDrag = false, logDragStart = vec2(0, 0), logOfsStart = vec2(0, 0),
@@ -1897,6 +1897,7 @@ local __dcOk, DriveChat = pcall(function()
     if not (S.browser and S.ready) then return end
     local r = S.ranks[m.name]
     jsend('dcMessage', {
+      id = m.id or 0,
       name = m.name, rawName = m.name, text = m.text or false, sticker = m.sticker or false,
       srv = m.srv or false, mine = m.mine or false,
       rank = (m.srv and "") or rankOf(m.name),
@@ -1906,6 +1907,8 @@ local __dcOk, DriveChat = pcall(function()
     })
   end
   local function pushLog(m)
+    S.msgId = S.msgId + 1
+    m.id = S.msgId
     S.log[#S.log + 1] = m
     while #S.log > LOG_MAX do table.remove(S.log, 1) end
   end
@@ -2158,6 +2161,14 @@ local __dcOk, DriveChat = pcall(function()
   local function handleData(data)
     if data == 'ready' then markReady(); return end
     if data == 'ack' then S.acked = true; return end
+    -- مزامنة الرسائل: الصفحة ترسل أعلى id عندها، ونعيد دفع أي رسالة أحدث (استرجاع المفقود)
+    if data:sub(1, 8) == 'msgsync:' then
+      local haveId = tonumber(data:sub(9)) or 0
+      for _, m in ipairs(S.log) do
+        if (m.id or 0) > haveId then toBrowser(m) end
+      end
+      return
+    end
     if data:sub(1, 4) == 'kbd:' then S.wantsKbd = (data:sub(5) == '1'); return end
     if data:sub(1, 5) == 'send:' then
       local msg = data:sub(6)
@@ -2620,7 +2631,11 @@ local __dcOk, DriveChat = pcall(function()
           local nm = ac.getDriverName(i) or ("لاعب " .. i)
           if car and car.isConnected and not car.isAIControlled and not string.find(nm, "Traffic") then
             local jk = i .. '|' .. nm
-            if not S.joined[jk] then S.joined[jk] = now end
+            if not S.joined[jk] then
+              S.joined[jk] = now
+              -- لاعب جديد دخل: نجدّد الرتب قريباً عشان تبان بياناته بسرعة (بدل انتظار 30ث)
+              if now - (S.lastRanks or 0) > 5 then S.lastRanks = now - 25 end
+            end
             seen[jk] = true
             local r = S.ranks[nm]
             local d = 0
@@ -3188,7 +3203,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.5 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.6 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
