@@ -577,7 +577,7 @@ function phr(t){addMessage(myMsg({text:t}));sendToLua('send:'+t);togglePanel('ph
 /* الأسماء كلها بادئة dc — عشان نقدر نعرّفها كدوال عالمية بأمان بدون ما نكسر window.focus/blur */
 // ============ نظام الكلانات ============
 const CLAN_EMOJIS_ALL=['🛡️','⚔️','🔥','⚡','👑','🐺','🦅','🦁','🐉','🦂','🌟','💎','🎯','🏁','🚀','☠️','🐍','🦈','🐻','🦖','⭐','🔱','🎖️','🏆','💠','🀄','🎲','🧨','🌪️','❄️'];
-let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️';
+let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️', MY_CAN_CREATE=true;
 
 function openClanPanel(){
   CLAN_VIEW=null; CLAN_SCREEN='main';
@@ -695,6 +695,16 @@ function renderClan(){
       });
       h+='<div style="height:14px"></div>';
     }
+    if(!MY_CAN_CREATE){
+      // ما عنده صلاحية إنشاء كلان — نعرض رسالة واضحة بدل النموذج
+      h+=`<div style="text-align:center;padding:26px 14px;background:#1a1218;border:1px solid #B4231C55;border-radius:14px;margin-top:6px">
+        <div style="font-size:34px;margin-bottom:8px">🔒</div>
+        <div style="font-weight:900;font-size:15px;margin-bottom:4px">ليس لديك صلاحية إنشاء كلان</div>
+        <div style="color:var(--mut);font-size:12.5px">هذه الميزة محصورة على رتب معينة في السيرفر</div>
+      </div>`;
+      body.innerHTML=h;
+      return;
+    }
     h+=`<div class="cl" style="font-size:12px;margin-bottom:6px">✨ إنشاء كلان جديد</div>`;
     h+=`<input id="clan_name" placeholder="اسم الكلان (2-20)" maxlength="20" style="width:100%;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;margin-bottom:6px;outline:none;font-family:inherit">`;
     h+=`<div style="display:flex;gap:6px;margin-bottom:8px"><input id="clan_tag" placeholder="التاق (2-5)" maxlength="5" style="flex:1;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;outline:none;font-family:inherit"><input id="clan_color" type="color" value="#F7820E" style="width:52px;height:40px;background:none;border:1px solid #333;border-radius:8px;cursor:pointer"></div>`;
@@ -775,6 +785,9 @@ function clanCreate(){
   const ei=CLAN_EMOJIS_ALL.indexOf(CLAN_PICK_EMOJI);
   sendToLua('clancreate:'+JSON.stringify({clanName:n,tag:t,color:c,emojiIdx:ei}));
   toast('جاري إنشاء الكلان...');
+  // احتياط: لو ضاع رد الإنشاء، نعيد جلب حالة كلاني بعد ثانيتين/أربع عشان تنعرض
+  setTimeout(()=>sendToLua('clanmine:'), 2000);
+  setTimeout(()=>sendToLua('clanmine:'), 4500);
 }
 function clanDoInvite(name){ sendToLua('claninvite:'+name); toast('جاري إرسال الدعوة لـ '+name+'...'); }
 function clanSaveEdit(){
@@ -831,7 +844,7 @@ const HANDLERS = {
     else if(d.reason==='target_not_linked'){ toast('هذا اللاعب غير مربوط بالديسكورد'); }
     else { toast('تعذّر تسجيل اللايك'); }
   },
-  dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_CLAN_INVITES=d.invites||[]; if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
+  dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_CLAN_INVITES=d.invites||[]; MY_CAN_CREATE=(d.canCreate!==false); if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
   dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find(e=>!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
