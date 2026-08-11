@@ -293,7 +293,7 @@ function pumpTitle(){
   if(TBUSY || !TQUEUE.length) return;
   TBUSY = true;
   document.title = 'DRIVECHAT:' + TQUEUE.shift();
-  setTimeout(()=>{ TBUSY = false; pumpTitle(); }, 80);
+  setTimeout(()=>{ TBUSY = false; pumpTitle(); }, 45);
 }
 function sendToLua(msg){
   const payload = (++TSEQ) + ':' + String(msg);
@@ -484,6 +484,10 @@ function refreshProfile(){
   }
 }
 setInterval(refreshProfile,1000);
+// استرجاع الرسائل المفقودة: نطلب من اللعبة إعادة إرسال أي رسالة أحدث من آخر id متصل عندنا
+// (نستخدم أعلى id متسلسل بدون فجوات، عشان الرسائل المفقودة بالنص ترجع بعد)
+function contiguousHigh(){ let i=1; while(MSG_SEEN.has(i)) i++; return i-1; }
+setInterval(()=>{ try{ sendToLua('msgsync:'+contiguousHigh()); }catch(e){} }, 2500);
 
 /* ---------- notifications toggle ---------- */
 function applyNotifBtn(){
@@ -515,8 +519,11 @@ function sendAdmin(){
 
 /* ---------- messages ---------- */
 const msgsEl=document.getElementById('msgs');
+let MSG_MAXID=0; const MSG_SEEN=new Set();   // لتتبّع الرسائل المستلمة (استرجاع المفقود بدون تكرار)
 function addMessage(m){
-  // m = {name, text?, sticker?, rank?, mine?, srv?, time?, rawName?, avatar?}
+  // m = {id?, name, text?, sticker?, rank?, mine?, srv?, time?, rawName?, avatar?}
+  // منع التكرار: لو وصلت نفس الرسالة (id) مرتين نتجاهلها
+  if(m.id){ if(MSG_SEEN.has(m.id)) return; MSG_SEEN.add(m.id); if(m.id>MSG_MAXID) MSG_MAXID=m.id; }
   const near=msgsEl.scrollTop+msgsEl.clientHeight>=msgsEl.scrollHeight-40;
   const row=document.createElement('div');
   row.className='msg'+(m.srv?' sys':m.mine?' mine':'');
@@ -593,6 +600,10 @@ function openClanDetails(name){
   document.getElementById('clanovl').classList.add('show');
   sendToLua('clandetails:'+name);
   renderClan();
+  // احتياط: لو ضاع الرد، نعيد الطلب لين يجي
+  const want=name;
+  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want) sendToLua('clandetails:'+want); }, 1800);
+  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want) sendToLua('clandetails:'+want); }, 4000);
 }
 function closeClan(){ document.getElementById('clanovl').classList.remove('show'); CLAN_VIEW=null; CLAN_SCREEN='main'; }
 
@@ -914,9 +925,9 @@ const HANDLERS = {
   dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(d.unlockedSlots) CLAN_EMOJI_SLOTS=d.unlockedSlots; if(d.perRow) CLAN_EMOJI_PERROW=d.perRow; if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find((e,i)=>i<CLAN_EMOJI_SLOTS&&!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
-    if(d.ok){ toast(d.msg||'تم ✓'); sendToLua('clanmine:'); }
+    if(d.ok){ toast(d.msg||'تم ✓'); CLAN_SCREEN='main'; sendToLua('clanmine:'); sendToLua('clanemojis:'); }
     else {
-      const R={bad_args:'بيانات ناقصة',not_linked:'اربط حسابك أول',already_in_clan:'أنت في كلان بالفعل',no_permission:'ما عندك صلاحية إنشاء كلان',bad_name:'اسم غير صالح (2-20)',bad_tag:'تاق غير صالح (2-5)',name_taken:'الاسم محجوز',not_in_clan:'ما عندك كلان',not_owner:'المالك فقط يقدر',target_not_linked:'اللاعب غير مربوط',target_has_clan:'اللاعب عنده كلان',full:'الكلان ممتلئ',already_invited:'تمت دعوته من قبل',no_invite:'لا توجد دعوة',not_member:'ليس عضواً',cant_kick_self:'ما تقدر تطرد نفسك',owner_must_transfer:'انقل الملكية أول',target_not_member:'ليس عضواً في كلانك',no_clan:'الكلان غير موجود',color_locked:'هذا اللون حصري — افتحه بمستوى 3'};
+      const R={bad_args:'بيانات ناقصة',not_linked:'اربط حسابك أول',already_in_clan:'أنت في كلان بالفعل',no_permission:'ما عندك صلاحية إنشاء كلان',bad_name:'اسم غير صالح (2-20)',bad_tag:'تاق غير صالح (2-5)',name_taken:'الاسم محجوز',not_in_clan:'ما عندك كلان',not_owner:'المالك فقط يقدر',target_not_linked:'اللاعب غير مربوط',target_has_clan:'اللاعب عنده كلان',full:'الكلان ممتلئ',already_invited:'تمت دعوته من قبل',no_invite:'لا توجد دعوة',not_member:'ليس عضواً',cant_kick_self:'ما تقدر تطرد نفسك',owner_must_transfer:'انقل الملكية أول',target_not_member:'ليس عضواً في كلانك',no_clan:'الكلان غير موجود',color_locked:'اللون الحر يُفتح بمستوى 8',emoji_locked:'هذا الإيموجي يُفتح بمستوى أعلى'};
       toast(R[d.reason]||'تعذّرت العملية');
     }
   },
