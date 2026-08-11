@@ -600,6 +600,34 @@ function clanHeadColor(col){
 }
 
 // شريط إحصائية أنيق
+// أسماء المزايا بالعربي (للعرض)
+const PERK_LABELS={exclusive_colors:'🎨 ألوان حصرية',clan_banner:'🚩 بانر كلان',priority_slots:'⚡ أفضلية دخول',clan_garage:'🏠 كراج مشترك'};
+// شريط تقدّم المستوى + معاينة مكافأة المستوى التالي (عنصر الحماس)
+function clanLevelBar(c){
+  const lvl=c.clanLevel||1, pct=Math.round((c.progress!=null?c.progress:1)*100);
+  const col=c.color||'#F5C518';
+  let h=`<div style="background:#17161e;border:1px solid #262433;border-radius:12px;padding:11px 12px;margin-bottom:12px">`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+    <span style="font-weight:900;font-size:13px">⭐ مستوى ${lvl} <span style="color:var(--mut);font-weight:400">· ${esc(c.levelTitle||'')}</span></span>`;
+  if(c.nextLevel) h+=`<span style="font-size:11px;color:var(--mut)">التالي: مستوى ${c.nextLevel}</span>`;
+  else h+=`<span style="font-size:11px;color:#F5C518">أعلى مستوى 🏆</span>`;
+  h+=`</div>`;
+  // شريط التقدّم
+  h+=`<div style="height:9px;background:#0e0d13;border-radius:6px;overflow:hidden;border:1px solid #23212e">
+    <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${col},#F5C518);border-radius:6px;transition:width .4s"></div></div>`;
+  if(c.nextLevel){
+    const hoursLeft=Math.max(0,Math.round((c.toNextMinutes||0)/60*10)/10);
+    h+=`<div style="font-size:11px;color:var(--mut);margin-top:5px;text-align:center">باقي ~${hoursLeft} ساعة لعب للأعضاء للمستوى التالي</div>`;
+  }
+  // مكافآت مفتوحة الآن
+  if((c.perks||[]).length){
+    h+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:9px">`;
+    (c.perks||[]).forEach(p=>{ h+=`<span style="font-size:10.5px;background:#F5C51822;color:#F5C518;border:1px solid #F5C51855;border-radius:20px;padding:2px 8px">${PERK_LABELS[p]||p}</span>`; });
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
 function clanStat(icon,label,val,col){
   return `<div style="flex:1;min-width:80px;background:#17161e;border:1px solid #262433;border-radius:12px;padding:10px 8px;text-align:center">
     <div style="font-size:18px">${icon}</div>
@@ -637,6 +665,7 @@ function renderClan(){
       ${clanStat('👥','الأعضاء',c.count||0,col)}
       ${clanStat('⭐','مستوى الكلان',c.clanLevel||1,'#F5C518')}
       ${clanStat('🎮','ساعات',Math.round((c.clanMinutes||0)/60),'#4Cc38A')}</div>`;
+    h+=clanLevelBar(c);
     h+=`<div class="crow"><span class="cl">👑 المالك</span><span class="cv">${esc(c.owner||'؟')}</span></div>`;
     h+=`<div class="crow"><span class="cl">📅 أُنشئ</span><span class="cv">${c.created?fmtDate(c.created):'—'}</span></div>`;
     if(c.desc) h+=`<div style="margin:10px 0"><div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div><div style="background:#17161e;border:1px solid #23212e;border-radius:10px;padding:9px;white-space:normal;font-weight:400;font-size:13px">${esc(c.desc)}</div></div>`;
@@ -673,6 +702,17 @@ function renderClan(){
       <textarea id="edit_desc" maxlength="120" placeholder="وصف الكلان..." style="width:100%;height:60px;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;resize:none;outline:none;font-family:inherit">${esc(MY_CLAN.desc||'')}</textarea>`;
     h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">🎨 لون الكلان</div>
       <input id="edit_color" type="color" value="${col}" style="width:100%;height:38px;background:none;border:1px solid #333;border-radius:8px;cursor:pointer">`;
+    // ألوان حصرية — تظهر لو الكلان فتحها (مستوى 3+)
+    if((MY_CLAN.exclusiveColors||[]).length){
+      h+=`<div class="cl" style="font-size:11.5px;margin:8px 0 4px;color:#F5C518">✨ ألوان حصرية (مفتوحة)</div>`;
+      h+=`<div style="display:flex;flex-wrap:wrap;gap:6px">`;
+      MY_CLAN.exclusiveColors.forEach(ec=>{
+        h+=`<button onclick="document.getElementById('edit_color').value='${ec}'" title="${ec}" style="width:30px;height:30px;border-radius:8px;border:2px solid #23212e;background:${ec};cursor:pointer"></button>`;
+      });
+      h+=`</div>`;
+    } else {
+      h+=`<div style="font-size:11px;color:var(--mut);margin-top:5px">🔒 الألوان الحصرية تُفتح عند مستوى 3</div>`;
+    }
     h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">${MY_CLAN.emoji||'🛡️'} إيموجي الكلان</div>`;
     h+=clanEmojiGrid(MY_CLAN.emoji);
     h+=`<div class="cbtns"><button class="cbtn pri" onclick="clanSaveEdit()">حفظ</button><button class="cbtn" onclick="clanBack()">رجوع</button></div>`;
@@ -719,10 +759,12 @@ function renderClan(){
   const col=MY_CLAN.color||'#8757D4';
   title.innerHTML=`${MY_CLAN.emoji||'🛡️'} ${esc(MY_CLAN.name)} <span style="opacity:.8;font-size:14px">[${esc(MY_CLAN.tag||'')}]</span>`;
   let h=`<div style="display:flex;gap:8px;margin-bottom:12px">
-    ${clanStat('👥','الأعضاء',MY_CLAN.count||0,col)}
+    ${clanStat('👥','الأعضاء',(MY_CLAN.count||0)+'/'+(MY_CLAN.maxMembers||5),col)}
     ${clanStat('⭐','المستوى',MY_CLAN.clanLevel||1,'#F5C518')}
     ${clanStat('🎮','ساعات',Math.round((MY_CLAN.clanMinutes||0)/60),'#4Cc38A')}</div>`;
+  h+=clanLevelBar(MY_CLAN);
   h+=`<div class="crow"><span class="cl">👑 المالك</span><span class="cv">${esc(MY_CLAN.owner||'؟')}${MY_IS_OWNER?' <span style="color:var(--or1)">(أنت)</span>':''}</span></div>`;
+  h+=`<div class="crow"><span class="cl">🏅 اللقب</span><span class="cv" style="color:#F5C518">${esc(MY_CLAN.levelTitle||'مبتدئ')}</span></div>`;
   h+=`<div class="crow"><span class="cl">📅 أُنشئ</span><span class="cv">${MY_CLAN.created?fmtDate(MY_CLAN.created):'—'}</span></div>`;
   if(MY_CLAN.desc) h+=`<div style="margin:10px 0"><div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div><div style="background:#17161e;border:1px solid #23212e;border-radius:10px;padding:9px;white-space:normal;font-weight:400;font-size:13px">${esc(MY_CLAN.desc)}</div></div>`;
   h+=`<div class="cl" style="font-size:12px;margin:10px 0 6px">👥 الأعضاء (${MY_CLAN.count||0})</div><div style="display:flex;flex-direction:column;gap:5px">`;
@@ -850,7 +892,7 @@ const HANDLERS = {
   dcClanAck:(d)=>{ d=d||{};
     if(d.ok){ toast(d.msg||'تم ✓'); sendToLua('clanmine:'); }
     else {
-      const R={bad_args:'بيانات ناقصة',not_linked:'اربط حسابك أول',already_in_clan:'أنت في كلان بالفعل',no_permission:'ما عندك صلاحية إنشاء كلان',bad_name:'اسم غير صالح (2-20)',bad_tag:'تاق غير صالح (2-5)',name_taken:'الاسم محجوز',not_in_clan:'ما عندك كلان',not_owner:'المالك فقط يقدر',target_not_linked:'اللاعب غير مربوط',target_has_clan:'اللاعب عنده كلان',full:'الكلان ممتلئ',already_invited:'تمت دعوته من قبل',no_invite:'لا توجد دعوة',not_member:'ليس عضواً',cant_kick_self:'ما تقدر تطرد نفسك',owner_must_transfer:'انقل الملكية أول',target_not_member:'ليس عضواً في كلانك',no_clan:'الكلان غير موجود'};
+      const R={bad_args:'بيانات ناقصة',not_linked:'اربط حسابك أول',already_in_clan:'أنت في كلان بالفعل',no_permission:'ما عندك صلاحية إنشاء كلان',bad_name:'اسم غير صالح (2-20)',bad_tag:'تاق غير صالح (2-5)',name_taken:'الاسم محجوز',not_in_clan:'ما عندك كلان',not_owner:'المالك فقط يقدر',target_not_linked:'اللاعب غير مربوط',target_has_clan:'اللاعب عنده كلان',full:'الكلان ممتلئ',already_invited:'تمت دعوته من قبل',no_invite:'لا توجد دعوة',not_member:'ليس عضواً',cant_kick_self:'ما تقدر تطرد نفسك',owner_must_transfer:'انقل الملكية أول',target_not_member:'ليس عضواً في كلانك',no_clan:'الكلان غير موجود',color_locked:'هذا اللون حصري — افتحه بمستوى 3'};
       toast(R[d.reason]||'تعذّرت العملية');
     }
   },
