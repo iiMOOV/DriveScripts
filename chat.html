@@ -576,7 +576,8 @@ function phr(t){addMessage(myMsg({text:t}));sendToLua('send:'+t);togglePanel('ph
    ============================================================ */
 /* الأسماء كلها بادئة dc — عشان نقدر نعرّفها كدوال عالمية بأمان بدون ما نكسر window.focus/blur */
 // ============ نظام الكلانات ============
-let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_ALL=[], CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️';
+const CLAN_EMOJIS_ALL=['🛡️','⚔️','🔥','⚡','👑','🐺','🦅','🦁','🐉','🦂','🌟','💎','🎯','🏁','🚀','☠️','🐍','🦈','🐻','🦖','⭐','🔱','🎖️','🏆','💠','🀄','🎲','🧨','🌪️','❄️'];
+let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️';
 
 function openClanPanel(){
   CLAN_VIEW=null; CLAN_SCREEN='main';
@@ -771,14 +772,16 @@ function clanCreate(){
   const t=(document.getElementById('clan_tag').value||'').trim();
   const c=document.getElementById('clan_color').value||'#F7820E';
   if(!n){toast('اكتب اسم الكلان');return;}
-  sendToLua('clancreate:'+JSON.stringify({clanName:n,tag:t,color:c,emoji:CLAN_PICK_EMOJI}));
+  const ei=CLAN_EMOJIS_ALL.indexOf(CLAN_PICK_EMOJI);
+  sendToLua('clancreate:'+JSON.stringify({clanName:n,tag:t,color:c,emojiIdx:ei}));
   toast('جاري إنشاء الكلان...');
 }
 function clanDoInvite(name){ sendToLua('claninvite:'+name); toast('جاري إرسال الدعوة لـ '+name+'...'); }
 function clanSaveEdit(){
   const d=(document.getElementById('edit_desc').value||'').trim();
   const c=document.getElementById('edit_color').value||'#F7820E';
-  sendToLua('clanedit:'+JSON.stringify({desc:d,color:c,emoji:CLAN_PICK_EMOJI}));
+  const ei=CLAN_EMOJIS_ALL.indexOf(CLAN_PICK_EMOJI);
+  sendToLua('clanedit:'+JSON.stringify({desc:d,color:c,emojiIdx:ei}));
   toast('جاري الحفظ...'); CLAN_SCREEN='main';
 }
 function clanRespond(clanId,accept){ sendToLua('clanrespond:'+JSON.stringify({clanId:clanId,accept:accept})); toast(accept?'جاري الانضمام...':'تم الرفض'); }
@@ -829,7 +832,7 @@ const HANDLERS = {
     else { toast('تعذّر تسجيل اللايك'); }
   },
   dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_CLAN_INVITES=d.invites||[]; if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
-  dcClanEmojis:(d)=>{ d=d||{}; CLAN_EMOJIS_ALL=d.all||[]; CLAN_EMOJIS_TAKEN=d.taken||[]; if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find(e=>!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
+  dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find(e=>!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
     if(d.ok){ toast(d.msg||'تم ✓'); sendToLua('clanmine:'); }
