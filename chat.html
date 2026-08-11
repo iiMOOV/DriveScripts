@@ -576,10 +576,12 @@ function phr(t){addMessage(myMsg({text:t}));sendToLua('send:'+t);togglePanel('ph
    ============================================================ */
 /* الأسماء كلها بادئة dc — عشان نقدر نعرّفها كدوال عالمية بأمان بدون ما نكسر window.focus/blur */
 // ============ نظام الكلانات ============
-const CLAN_EMOJIS_ALL=['🛡️','⚔️','🔥','⚡','👑','🐺','🦅','🦁','🐉','🦂','🌟','💎','🎯','🏁','🚀','☠️','🐍','🦈','🐻','🦖','⭐','🔱','🎖️','🏆','💠','🀄','🎲','🧨','🌪️','❄️'];
+const CLAN_EMOJIS_ALL=['🛡️','⚔️','🔥','⚡','🎯','🏁','🐺','🦅','🦁','🐉','🐍','🦈','🚀','☠️','🌪️','❄️','🧨','🎲','🦂','🐻','🦖','🎖️','🀄','🌟','⭐','🔱','💠','👑','💎','🏆'];
+let CLAN_EMOJI_SLOTS=6, CLAN_EMOJI_PERROW=6;   // كم إيموجي مفتوح (يجي من dcClanEmojis)
+let CLAN_PICK_COLOR='#F7820E';   // اللون المختار حالياً (create/edit)
 let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️', MY_CAN_CREATE=true;
 
-function openClanPanel(){
+function openClanPanel(){ CLAN_PICK_COLOR='#F7820E';
   CLAN_VIEW=null; CLAN_SCREEN='main';
   document.getElementById('clanovl').classList.add('show');
   sendToLua('clanmine:');
@@ -601,7 +603,7 @@ function clanHeadColor(col){
 
 // شريط إحصائية أنيق
 // أسماء المزايا بالعربي (للعرض)
-const PERK_LABELS={exclusive_colors:'🎨 ألوان حصرية',clan_banner:'🚩 بانر كلان',priority_slots:'⚡ أفضلية دخول',clan_garage:'🏠 كراج مشترك'};
+const PERK_LABELS={custom_color:'🎨 لون حر',clan_banner:'🚩 بانر كلان',priority_slots:'⚡ أفضلية دخول',clan_garage:'🏠 كراج مشترك',gold_name:'✨ اسم ذهبي'};
 // شريط تقدّم المستوى + معاينة مكافأة المستوى التالي (عنصر الحماس)
 function clanLevelBar(c){
   const lvl=c.clanLevel||1, pct=Math.round((c.progress!=null?c.progress:1)*100);
@@ -617,8 +619,11 @@ function clanLevelBar(c){
     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${col},#F5C518);border-radius:6px;transition:width .4s"></div></div>`;
   if(c.nextLevel){
     const hoursLeft=Math.max(0,Math.round((c.toNextMinutes||0)/60*10)/10);
-    h+=`<div style="font-size:11px;color:var(--mut);margin-top:5px;text-align:center">باقي ~${hoursLeft} ساعة لعب للأعضاء للمستوى التالي</div>`;
+    h+=`<div style="font-size:11px;color:var(--mut);margin-top:5px;text-align:center">باقي ~${hoursLeft} ساعة تواجد للمستوى ${c.nextLevel}</div>`;
+    if(c.nextUnlock) h+=`<div style="font-size:11px;color:#F5C518;margin-top:5px;text-align:center;background:#F5C51815;border:1px solid #F5C51833;border-radius:8px;padding:5px">🎁 القادم: ${esc(c.nextUnlock)}</div>`;
   }
+  // عدد المتواجدين الآن (يسرّع الترقية)
+  if(c.onlineNow>0) h+=`<div style="font-size:11px;color:#12B886;margin-top:6px;text-align:center">🟢 ${c.onlineNow} من الأعضاء متواجد الآن — XP ×${c.onlineNow}</div>`;
   // مكافآت مفتوحة الآن
   if((c.perks||[]).length){
     h+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:9px">`;
@@ -697,22 +702,26 @@ function renderClan(){
   // ===== شاشة التعديل =====
   if(CLAN_SCREEN==='edit' && MY_CLAN){
     title.innerHTML='✏️ تعديل الكلان';
-    const col=MY_CLAN.color||'#F7820E';
+    const col=CLAN_PICK_COLOR||MY_CLAN.color||'#F7820E';
     let h=`<div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div>
       <textarea id="edit_desc" maxlength="120" placeholder="وصف الكلان..." style="width:100%;height:60px;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:8px;resize:none;outline:none;font-family:inherit">${esc(MY_CLAN.desc||'')}</textarea>`;
-    h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">🎨 لون الكلان</div>
-      <input id="edit_color" type="color" value="${col}" style="width:100%;height:38px;background:none;border:1px solid #333;border-radius:8px;cursor:pointer">`;
-    // ألوان حصرية — تظهر لو الكلان فتحها (مستوى 3+)
-    if((MY_CLAN.exclusiveColors||[]).length){
-      h+=`<div class="cl" style="font-size:11.5px;margin:8px 0 4px;color:#F5C518">✨ ألوان حصرية (مفتوحة)</div>`;
-      h+=`<div style="display:flex;flex-wrap:wrap;gap:6px">`;
-      MY_CLAN.exclusiveColors.forEach(ec=>{
-        h+=`<button onclick="document.getElementById('edit_color').value='${ec}'" title="${ec}" style="width:30px;height:30px;border-radius:8px;border:2px solid #23212e;background:${ec};cursor:pointer"></button>`;
-      });
-      h+=`</div>`;
+    // 5 ألوان جاهزة للجميع + منتقي حر يُفتح بمستوى 8
+    const presets=MY_CLAN.presetColors||['#F7820E','#E5484D','#3B82F6','#12B886','#8757D4'];
+    h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">🎨 لون الكلان</div>`;
+    h+=`<input type="hidden" id="edit_color" value="${col}">`;
+    h+=`<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center">`;
+    presets.forEach(pc=>{
+      const on=(pc.toLowerCase()===(col||'').toLowerCase());
+      h+=`<button onclick="clanPickColor('${pc}')" title="${pc}" style="width:34px;height:34px;border-radius:9px;border:2px solid ${on?'#fff':'#23212e'};background:${pc};cursor:pointer"></button>`;
+    });
+    if(MY_CLAN.customColor){
+      // تخصيص حر (مفتوح بمستوى 8+)
+      h+=`<label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#F5C518;cursor:pointer;background:#17161e;border:1px solid #F5C51855;border-radius:9px;padding:6px 9px">
+        ✨ لون حر <input type="color" value="${col}" oninput="clanPickColor(this.value)" style="width:26px;height:26px;background:none;border:none;cursor:pointer;padding:0"></label>`;
     } else {
-      h+=`<div style="font-size:11px;color:var(--mut);margin-top:5px">🔒 الألوان الحصرية تُفتح عند مستوى 3</div>`;
+      h+=`<span style="font-size:11px;color:var(--mut);display:inline-flex;align-items:center">🔒 لون حر بمستوى 8</span>`;
     }
+    h+=`</div>`;
     h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">${MY_CLAN.emoji||'🛡️'} إيموجي الكلان</div>`;
     h+=clanEmojiGrid(MY_CLAN.emoji);
     h+=`<div class="cbtns"><button class="cbtn pri" onclick="clanSaveEdit()">حفظ</button><button class="cbtn" onclick="clanBack()">رجوع</button></div>`;
@@ -747,7 +756,15 @@ function renderClan(){
     }
     h+=`<div class="cl" style="font-size:12px;margin-bottom:6px">✨ إنشاء كلان جديد</div>`;
     h+=`<input id="clan_name" placeholder="اسم الكلان (2-20)" maxlength="20" style="width:100%;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;margin-bottom:6px;outline:none;font-family:inherit">`;
-    h+=`<div style="display:flex;gap:6px;margin-bottom:8px"><input id="clan_tag" placeholder="التاق (2-5)" maxlength="5" style="flex:1;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;outline:none;font-family:inherit"><input id="clan_color" type="color" value="#F7820E" style="width:52px;height:40px;background:none;border:1px solid #333;border-radius:8px;cursor:pointer"></div>`;
+    h+=`<input id="clan_tag" placeholder="التاق (2-5)" maxlength="5" style="width:100%;background:#1a1922;border:1px solid rgba(247,130,14,.3);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;margin-bottom:8px;outline:none;font-family:inherit">`;
+    h+=`<input type="hidden" id="clan_color" value="${CLAN_PICK_COLOR}">`;
+    h+=`<div class="cl" style="font-size:12px;margin-bottom:5px">🎨 اللون (لون حر يُفتح بمستوى 8):</div>`;
+    h+=`<div style="display:flex;gap:7px;margin-bottom:8px">`;
+    ['#F7820E','#E5484D','#3B82F6','#12B886','#8757D4'].forEach((pc)=>{
+      const on=(pc.toLowerCase()===CLAN_PICK_COLOR.toLowerCase());
+      h+=`<button onclick="clanPickColor('${pc}')" title="${pc}" style="width:34px;height:34px;border-radius:9px;border:2px solid ${on?'#fff':'#23212e'};background:${pc};cursor:pointer"></button>`;
+    });
+    h+=`</div>`;
     h+=`<div class="cl" style="font-size:12px;margin-bottom:5px">اختر إيموجي (غير المأخوذة):</div>`;
     h+=clanEmojiGrid(CLAN_PICK_EMOJI);
     h+=`<button class="cbtn pri" style="width:100%;margin-top:6px" onclick="clanCreate()">إنشاء الكلان 🛡️</button>`;
@@ -785,17 +802,24 @@ function renderClan(){
 // شبكة اختيار الإيموجي
 function clanEmojiGrid(current){
   CLAN_PICK_EMOJI=current||CLAN_PICK_EMOJI;
-  let h='<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-bottom:6px">';
-  (CLAN_EMOJIS_ALL.length?CLAN_EMOJIS_ALL:['🛡️']).forEach(em=>{
+  const slots=CLAN_EMOJI_SLOTS||6, perRow=CLAN_EMOJI_PERROW||6;
+  let h='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:6px">';
+  CLAN_EMOJIS_ALL.forEach((em,i)=>{
+    const locked=i>=slots;                                  // مقفول: فوق حد مستوى الكلان
     const taken=CLAN_EMOJIS_TAKEN.includes(em)&&em!==current;
     const sel=em===CLAN_PICK_EMOJI;
-    h+=`<button ${taken?'disabled':''} onclick="clanPickEmoji('${em}')" style="aspect-ratio:1;font-size:18px;border-radius:8px;cursor:${taken?'not-allowed':'pointer'};
-      background:${sel?'var(--or1)':'#17161e'};border:1px solid ${sel?'var(--or1)':'#262433'};opacity:${taken?'.28':'1'}">${em}</button>`;
+    const dis=locked||taken;
+    h+=`<button ${dis?'disabled':''} onclick="${dis?'':`clanPickEmoji('${em}')`}" title="${locked?'يُفتح بمستوى أعلى':(taken?'مأخوذ':'')}" style="position:relative;aspect-ratio:1;font-size:18px;border-radius:8px;cursor:${dis?'not-allowed':'pointer'};
+      background:${sel?'var(--or1)':'#17161e'};border:1px solid ${sel?'var(--or1)':'#262433'};opacity:${dis?'.30':'1'}">${locked?'🔒':em}</button>`;
   });
   h+='</div>';
+  // ملاحظة صف مفتوح
+  const rowsOpen=Math.ceil(slots/perRow), rowsTotal=Math.ceil(CLAN_EMOJIS_ALL.length/perRow);
+  h+=`<div style="font-size:10.5px;color:var(--mut);margin-bottom:6px">🔓 ${rowsOpen}/${rowsTotal} صفوف إيموجي مفتوحة · ارفع مستوى الكلان لفتح المزيد</div>`;
   return h;
 }
 function clanPickEmoji(em){ CLAN_PICK_EMOJI=em; renderClan(); }
+function clanPickColor(c){ CLAN_PICK_COLOR=c; const el=document.getElementById('clan_color')||document.getElementById('edit_color'); if(el) el.value=c; renderClan(); }
 
 // قائمة الدعوة (المتصلين)
 function renderInviteList(){
@@ -815,7 +839,7 @@ function renderInviteList(){
 
 // تنقّل الشاشات
 function clanGoInvite(){ CLAN_SCREEN='invite'; renderClan(); }
-function clanGoEdit(){ CLAN_SCREEN='edit'; renderClan(); }
+function clanGoEdit(){ CLAN_SCREEN='edit'; CLAN_PICK_COLOR=(MY_CLAN&&MY_CLAN.color)||'#F7820E'; CLAN_PICK_EMOJI=(MY_CLAN&&MY_CLAN.emoji)||CLAN_PICK_EMOJI; renderClan(); }
 function clanBack(){ CLAN_SCREEN='main'; renderClan(); }
 
 // عمليات (كلها بدون prompt/confirm)
@@ -887,7 +911,7 @@ const HANDLERS = {
     else { toast('تعذّر تسجيل اللايك'); }
   },
   dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_CLAN_INVITES=d.invites||[]; MY_CAN_CREATE=(d.canCreate!==false); if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
-  dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find(e=>!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
+  dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(d.unlockedSlots) CLAN_EMOJI_SLOTS=d.unlockedSlots; if(d.perRow) CLAN_EMOJI_PERROW=d.perRow; if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find((e,i)=>i<CLAN_EMOJI_SLOTS&&!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
     if(d.ok){ toast(d.msg||'تم ✓'); sendToLua('clanmine:'); }
