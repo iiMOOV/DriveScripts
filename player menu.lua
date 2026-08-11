@@ -23,6 +23,10 @@
 --    [23] REGISTER APP
 --    [24] UPDATE LOOP ......... calls each feature's update()
 --    [25] SCREEN HUD .......... open hint + ghost + rewind overlays
+--    [26] DRIVE CHAT .......... HTML chat (browser + Discord bridge)
+--    [27] ONLINE EXTRAS ....... optional toolbar buttons
+--    [28] MENU HOST ........... always-on menu (works without extras)
+--    [29] DRIVE TAGS .......... name tags above cars (name + rank badge)
 --
 --  RULE: every feature block owns its own state, logic and UI.
 --  To change one feature, edit only its block.
@@ -199,10 +203,18 @@ local Core = {
 }
 
 -- true لو اللاعب يكتب في الشات أو في خانة نص (نمنع المفاتيح وقتها)
+local chatTyping = false   -- يصير true وقت الشات مفتوح — يوقف مفاتيح المنيو (رجوع/بوست/شدّات) عشان ما تكرش
 local function isTyping()
+  if chatTyping then return true end
   if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then return true end
   if type(ac.isChatOpen) == "function" and ac.isChatOpen() then return true end
   return false
+end
+
+-- تحقق إن المتجه صالح (مو NaN ولا لانهاية ولا قيم مجنونة) — يمنع كراش الفيزياء
+local function vfinite(v)
+  return v ~= nil and v.x == v.x and v.y == v.y and v.z == v.z
+    and v.x < 1e9 and v.x > -1e9 and v.y < 1e9 and v.y > -1e9 and v.z < 1e9 and v.z > -1e9
 end
 
 function Core.ghostStart()
@@ -282,7 +294,7 @@ local function drawTeleport(X, Y, W, H)
     for i = 1, ac.getSim().carsCount - 1 do
       local c = ac.getCar(i)
       local n = ac.getDriverName(i)
-      if c and c.isConnected and not c.isAIControlled and n ~= "1980" and not string.find(n or "", "Traffic") then
+      if c and c.isConnected and not c.isAIControlled and not string.find(n or "", "Traffic") then
         local ry = k * 46 + 4
         ui.setCursor(vec2(4, ry))
         local cl  = ui.invisibleButton("##pl" .. i, vec2(ww - 14, 42))
@@ -1000,15 +1012,19 @@ local function rewindUpdate(dt)
     local popN = math.floor((dt * rewindStore.speed) / CFG.REWIND_INTERVAL)
     if popN < 1 then popN = 1 end
     for _ = 1, popN do if #rHistory > 0 then rLastState = table.remove(rHistory) end end
-    if rLastState then
-      physics.setCarVelocity(0, vec3(0, 0, 0))
-      physics.setCarPosition(0, rLastState.pos, -rLastState.look, rLastState.up)
+    -- تحصين: لا نطعم الفيزياء إحداثيات/اتجاه غير صالح (يمنع كراش ReplayManager)
+    if rLastState and vfinite(rLastState.pos) and vfinite(rLastState.look) and vfinite(rLastState.up)
+       and rLastState.look:length() > 0.05 and rLastState.up:length() > 0.05 then
+      pcall(function()
+        physics.setCarVelocity(0, vec3(0, 0, 0))
+        physics.setCarPosition(0, rLastState.pos, -rLastState.look, rLastState.up)
+      end)
     end
   else
     rIsRewinding = false
     if rWasRewinding then
       rWasRewinding = false
-      if rLastState then physics.setCarVelocity(0, rLastState.vel) end
+      if rLastState and vfinite(rLastState.vel) then pcall(function() physics.setCarVelocity(0, rLastState.vel) end) end
       Core.ghostStart()
     end
     rRecordTimer = rRecordTimer + dt
@@ -1460,6 +1476,76 @@ end
 --   تبي تضيف تبويب؟ سوّ بلوك ميزة فوق، وزد سطر واحد هنا.
 --   تبي تشيل تبويب؟ احذف سطره — بدون أي تعديل ثاني.
 --=================================================================
+-- ===== إعدادات التاق (يقرأها بلوك [29]) + تبويب التحكم =====
+local tagStore = ac.storage{ tg_enabled = 1, tg_scale = 1.0, tg_opacity = 1.0, tg_distance = 150.0, tg_flag = 1, tg_height = 1.35 }
+
+local function drawTags(X, Y, W, H)
+  local sy = Y
+  sectionTitle("تاقات الأسماء", "NAME TAGS", X, sy, W); sy = sy + 50
+
+  -- تشغيل/إيقاف
+  do
+    local on = tagStore.tg_enabled == 1
+    ui.setCursor(vec2(X, sy))
+    local cl = ui.invisibleButton("##tgen", vec2(W, 40))
+    ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + 40),
+      on and rgbm(ACC.r, ACC.g, ACC.b, 0.85) or rgbm(1, 1, 1, 0.05), 10)
+    dwBox(on and "التاقات: تعمل" or "التاقات: متوقفة", 15, X, sy, W, 40, on and DK or CW)
+    if cl then tagStore.tg_enabled = on and 0 or 1 end
+    sy = sy + 50
+  end
+
+  -- الحجم
+  dwLeftBox("الحجم", 13, X, sy, 120, 18, ACC)
+  dwRightBox(string.format("%.0f%%", tagStore.tg_scale * 100), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nsc, csc = ui.slider("##tgsize", tagStore.tg_scale, 0.5, 2.0, "")
+  if csc then tagStore.tg_scale = math.clamp(nsc, 0.5, 2.0) end
+  sy = sy + 46
+
+  -- الشفافية
+  dwLeftBox("الوضوح", 13, X, sy, 120, 18, ACC)
+  dwRightBox(string.format("%.0f%%", tagStore.tg_opacity * 100), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nop, cop = ui.slider("##tgopac", tagStore.tg_opacity, 0.15, 1.0, "")
+  if cop then tagStore.tg_opacity = math.clamp(nop, 0.15, 1.0) end
+  sy = sy + 46
+
+  -- المسافة
+  dwLeftBox("مدى الظهور", 13, X, sy, 140, 18, ACC)
+  dwRightBox(string.format("%.0f م", tagStore.tg_distance), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nds, cds = ui.slider("##tgdist", tagStore.tg_distance, 30, 400, "")
+  if cds then tagStore.tg_distance = math.clamp(nds, 30, 400) end
+  sy = sy + 46
+
+  -- الارتفاع فوق السيارة (متر)
+  dwLeftBox("ارتفاع التاق", 13, X, sy, 140, 18, ACC)
+  dwRightBox(string.format("%.2f م", tagStore.tg_height), 13, X + W - 90, sy, 90, 18, CDm)
+  sy = sy + 22
+  ui.setCursor(vec2(X, sy)); ui.setNextItemWidth(W)
+  local nhg, chg = ui.slider("##tghgt", tagStore.tg_height, 0.2, 3.0, "")
+  if chg then tagStore.tg_height = math.clamp(nhg, 0.2, 3.0) end
+  sy = sy + 46
+
+  -- العلم
+  do
+    local on = tagStore.tg_flag == 1
+    ui.setCursor(vec2(X, sy))
+    local cl = ui.invisibleButton("##tgflag", vec2(W, 36))
+    ui.drawRectFilled(vec2(X, sy), vec2(X + W, sy + 36),
+      on and rgbm(ACC.r, ACC.g, ACC.b, 0.6) or rgbm(1, 1, 1, 0.05), 10)
+    dwBox(on and "علم الدولة: ظاهر" or "علم الدولة: مخفي", 14, X, sy, W, 36, on and DK or CW)
+    if cl then tagStore.tg_flag = on and 0 or 1 end
+    sy = sy + 44
+  end
+
+  dwBox("التغييرات تنحفظ تلقائياً", 12, X, sy + 4, W, 16, CDm)
+end
+
 local TABS = {
   { key = "teleport", label = "الانتقال", icon = ICONS.crosshair, draw = drawTeleport },
   { key = "shadda",   label = "الشدّات",  icon = ICONS.pin,       draw = drawShadda   },
@@ -1470,6 +1556,7 @@ local TABS = {
   { key = "extras",   label = "الأكسترا", icon = ICONS.gear,      draw = drawExtras   },
   { key = "rewind",   label = "الرجوع",   icon = ICONS.rewind,    draw = drawRewind   },
   { key = "weather",  label = "الجو",     icon = ICONS.sun,       draw = drawWeather  },
+  { key = "tags",     label = "التاق",    icon = ICONS.gear,      draw = drawTags     },
 }
 
 --=================================================================
@@ -1497,6 +1584,8 @@ local function drawLogo(x0, y0, x1, y1)
   dwBox("DRIVE", 26, x0, y0, boxW, boxH, CW)
 end
 
+local panelBody   -- معرّف تحت (جسم البانل المشترك)
+
 local function mainUI()
   -- إذا توقفت اللعبة عن رسم النافذة (أُغلقت من قائمة التطبيقات) ثم أعادت إظهارها،
   -- نعيد فتح البانل تلقائياً حتى لا يطلع "شبح" فاضي ويظنّه اللاعب معلّقاً.
@@ -1515,6 +1604,11 @@ local function mainUI()
     return
   end
 
+  panelBody()
+end
+
+-- جسم البانل نفسه (يرسم من الاكسترا أو من المضيف الدائم [28] — نفس الكود للاثنين)
+panelBody = function()
   -- الحجم الفعلي للنافذة (تتحجّم بالسحب الطبيعي من الزاوية/الحواف)
   local ws = ui.windowSize()
   local W = math.max(ws.x, CFG.PANEL_MIN_W)
@@ -1555,7 +1649,7 @@ local function mainUI()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE ©", 10, 0, H - 22, NAV, 12, CDm)
+  dwBox("DRIVE © v6.2", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1620,11 +1714,1340 @@ ui.registerOnlineExtra(
 )
 
 --=================================================================
+-- [28] ALWAYS-ON MENU HOST  (المضيف الدائم للمنيو)
+--   يرسم المنيو مباشرة من script.drawUI حتى لو ما فعّلت
+--   "DRIVE | MENU" من قائمة الاكسترا — زر D يفتحه دايم.
+--   لو الاكسترا مفعّلة وترسم، هذا البلوك يسكت تلقائياً (بدون تكرار).
+--=================================================================
+local hostStor = ac.storage{ mh_x = -1.0, mh_y = -1.0, mh_w = 0.0, mh_h = 0.0 }
+local host = { drag = false, dragOff = vec2(0, 0), sizing = false, gripStart = vec2(0, 0), sizeStart = vec2(0, 0) }
+
+local function drawMenuHost()
+  if not panelOpen then return end
+  if Core.clock - lastDrawClock < 0.3 then return end   -- الاكسترا نفسها ترسم — لا تكرر
+  local sim = ac.getSim()
+  if not sim then return end
+  local W = math.max(CFG.PANEL_MIN_W, (hostStor.mh_w > 0) and hostStor.mh_w or CFG.PANEL_W)
+  local H = math.max(CFG.PANEL_MIN_H, (hostStor.mh_h > 0) and hostStor.mh_h or CFG.PANEL_H)
+  local px, py = hostStor.mh_x, hostStor.mh_y
+  if px < 0 or py < 0 then
+    px = (sim.windowWidth - W) * 0.5
+    py = (sim.windowHeight - H) * 0.5
+  end
+  px = math.max(0, math.min(sim.windowWidth - 80, px))
+  py = math.max(0, math.min(sim.windowHeight - 60, py))
+  -- (true, true) = بدون حواف + استقبال الضغطات — بدونها الأزرار داخل النافذة ما تستجيب
+  ui.transparentWindow("driveMenuHost", vec2(px, py), vec2(W, H), true, true, function()
+    panelBody()
+    local mlp = ui.mouseLocalPos()
+    -- سحب من الشريط العلوي (ما عدا زر الإغلاق يمين)
+    if ui.mouseClicked(ui.MouseButton.Left) and not host.drag and not host.sizing
+       and mlp.y >= 0 and mlp.y <= 44 and mlp.x >= 0 and mlp.x <= (W - 50) and not ui.anyItemActive() then
+      host.drag = true; host.dragOff = vec2(mlp.x, mlp.y)
+    end
+    if host.drag then
+      if ui.mouseDown(ui.MouseButton.Left) then
+        local mp = ui.mousePos()
+        hostStor.mh_x = mp.x - host.dragOff.x
+        hostStor.mh_y = mp.y - host.dragOff.y
+      else host.drag = false end
+    end
+    -- تحجيم من الزاوية السفلية اليمنى (نفس علامة التحجيم المرسومة)
+    local overGrip = mlp.x >= (W - 26) and mlp.x <= W and mlp.y >= (H - 26) and mlp.y <= H
+    if overGrip and ui.mouseDown(ui.MouseButton.Left) and not host.sizing and not host.drag then
+      host.sizing = true; host.gripStart = ui.mousePos(); host.sizeStart = vec2(W, H)
+    end
+    if host.sizing then
+      if ui.mouseDown(ui.MouseButton.Left) then
+        local mp = ui.mousePos()
+        hostStor.mh_w = math.max(CFG.PANEL_MIN_W, host.sizeStart.x + (mp.x - host.gripStart.x))
+        hostStor.mh_h = math.max(CFG.PANEL_MIN_H, host.sizeStart.y + (mp.y - host.gripStart.y))
+      else host.sizing = false end
+    end
+  end)
+end
+
+--=================================================================
 -- [24] UPDATE LOOP
 --   كل ميزة لها دالة update خاصة — ننادي عليها من هنا فقط.
 --=================================================================
 local menuPrevKey = false
 
+--=================================================================
+-- [26] DRIVE CHAT  (شات HTML — متصفح CSP — زر C)
+--=================================================================
+-- الواجهة صفحة chat.html على GitHub Pages (نفس معمارية IDDL):
+--   JS  -> Lua : AC.send('Drivechat', 'cmd:...')   => browser:onReceive('Drivechat')
+--   Lua -> JS  : browser:sendAsync('event', data)  => window.DriveChat[event]
+-- فقاعات الإشعارات (لما الشات مقفول) ترسم Native وتُقفل/تُفتح من زر 🔔 داخل الصفحة.
+local __dcOk, DriveChat = pcall(function()
+  -- ===== إعدادات =====
+  local KEY      = string.byte("C")
+  local CHAT_URL = "https://iimoov.github.io/DriveScripts/chat.html"
+  -- ديسكورد (اختياري — خلّه "" للتعطيل):
+  local ADMIN_WEBHOOK   = "https://discord.com/api/webhooks/1536077079446294588/EXaBQ2dv9hJwU8EHRNDxCM6VJZHL42XQfGq9ytBjKefZzhxHCds_DqHMn7LgMED3IESH"   -- ويب هوك روم «تواصل مع الإدارة» (زر 📨 داخل الشات)
+  local CHATLOG_WEBHOOK = "https://discord.com/api/webhooks/1536076922402902087/rNy5tdYAdkRS7baBkKu0sb56nowE5TfpueIG2JgitqBF9_z7vNXbpUcsVCq7uwsauVQ_"   -- ويب هوك روم مراقبة الشات (كل رسالة يرسلها اللاعب توصل هناك)
+  local RANKS_URL       = "http://91.218.66.157:3050/drive/ranks"  -- رابط API البوت للرتب/الربط مثال: http://IP:3050/drive/ranks
+  local ADMIN_NAMES     = {}  -- fallback محلي لو ما فيه API — مثال: { ["AZOOZ"] = "admin" }
+
+  local ACC  = rgbm(1.00, 0.45, 0.06, 1)   -- برتقالي هوية DRIVE
+  local CY   = rgbm(1.00, 0.84, 0.20, 1)   -- أصفر هوية DRIVE
+  local CW   = rgbm.colors.white
+  local CDm  = rgbm(0.66, 0.67, 0.70, 1)
+  local FONT = "Segoe UI;Weight=Bold"
+  local NOOP = function() end
+
+  local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_opacity = 1.0, dc_logX = 16, dc_logY = -1, dc_w = 0, dc_h = 0 }
+
+  -- ===== الستيكرز / GIF =====
+  -- نفس القائمة عند كل العملاء — نرسل رقم فقط ($STICK:N) لأن روابط GIF أطول من حد رسائل AC.
+  -- (القائمتان تنعرضان بتابين منفصلين داخل الصفحة)
+  local STICKERS = {
+    "https://pbs.twimg.com/media/G7gyUn4WMAAafxA.jpg",
+    "https://i1.sndcdn.com/artworks-kpz9WCWcGJ9AFL58-10R0yA-t500x500.jpg",
+    "https://i.pinimg.com/236x/9c/b9/17/9cb917337ebedb3dda74c974bde47dc0.jpg",
+    "https://i.ytimg.com/vi/h5f9rl2Y5F8/oar2.jpg",
+    "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEibrYm5kiGVQRHXjNHVTJg1U8X97tUKCHc5K2r2rA4_J0xo8ALquNxqJK3VMxbI0N6mlcw_XguUtshae1huBmBNNe8cwh6_YyU9cVcZYa3_xtf8GnO2odL2vzqcWp31WjuCbkGL4r8BT1AufOl99KqxR27ITeULa6749SXfQFGFzJ3iW7udeFXz9ifywA/s640/IMG_20220925_202534_772.jpg",
+	  "https://i.imgur.com/9uijEsa.png",
+	  "https://pbs.twimg.com/media/HEOexNwWkAArXOi.jpg",
+	  "https://i.imgur.com/4wYJO7H.png",
+  	"https://i.imgur.com/GvkKdq6.png",
+  }
+  local GIFS = {
+    "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif",
+    "https://www.thisiscolossal.com/wp-content/uploads/2014/03/120430.gif",
+  }
+  local ALLPICS, PICIDX = {}, {}
+  for _, u in ipairs(STICKERS) do ALLPICS[#ALLPICS + 1] = u end
+  for _, u in ipairs(GIFS)     do ALLPICS[#ALLPICS + 1] = u end
+  for i, u in ipairs(ALLPICS)  do PICIDX[u] = i end
+
+  -- ===== الحالة =====
+  local S = {
+    browser = nil, ready = false, initSent = false,
+    open = false, wantsKbd = false,
+    navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
+    pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
+    sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), szRight = 0, sizeLoaded = false,
+    lastPush = 0, lastRanks = -999, ranks = {}, joined = {},
+    seen = {}, jsMode = false, acked = false, readyAt = 0,
+    inputSaved = false, savedInput = nil,
+    log = {}, chatReveal = 1, logDrag = false, logDragStart = vec2(0, 0), logOfsStart = vec2(0, 0),
+  }
+  local LOG_MAX = 60
+
+  local function myName() return ac.getDriverName(0) or "أنت" end
+  local function rankOf(nm)
+    local r = S.ranks[nm]
+    return (r and r.rank) or ADMIN_NAMES[nm] or ""
+  end
+  local function jsonStr(s)
+    if not s then return '""' end
+    return '"' .. tostring(s):gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '') .. '"'
+  end
+
+  -- ===== ناقل Lua -> JS (قناتين: sendAsync الأساسية + javascript: للطوارئ) =====
+  local B64C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  local function b64(data)
+    return ((data:gsub('.', function(x)
+      local r, b = '', x:byte()
+      for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and '1' or '0') end
+      return r
+    end) .. '0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+      if #x < 6 then return '' end
+      local c = 0
+      for i = 1, 6 do c = c + (x:sub(i, i) == '1' and 2 ^ (6 - i) or 0) end
+      return B64C:sub(c + 1, c + 1)
+    end) .. ({ '', '==', '=' })[#data % 3 + 1])
+  end
+  local function jval(v)
+    local t = type(v)
+    if t == 'string' then return jsonStr(v) end
+    if t == 'number' then return tostring(v) end
+    if t == 'boolean' then return v and 'true' or 'false' end
+    if t == 'table' then
+      if #v > 0 or next(v) == nil then
+        local parts = {}
+        for i = 1, #v do parts[#parts + 1] = jval(v[i]) end
+        return '[' .. table.concat(parts, ',') .. ']'
+      else
+        local parts = {}
+        for k, val in pairs(v) do parts[#parts + 1] = jsonStr(tostring(k)) .. ':' .. jval(val) end
+        return '{' .. table.concat(parts, ',') .. '}'
+      end
+    end
+    return 'null'
+  end
+  local function jsend(event, data, cb)
+    if not S.browser then return end
+    if S.jsMode then
+      -- وضع الطوارئ: sendAsync ما وصلت للصفحة — ننفذ مباشرة عبر javascript: URL
+      pcall(function()
+        local payload = b64(jval({ e = event, d = data }))
+        S.browser:navigate("javascript:try{DCRX('" .. payload .. "')}catch(e){}")
+      end)
+      if cb then pcall(cb) end
+    else
+      pcall(function() S.browser:sendAsync(event, data, cb or NOOP) end)
+    end
+  end
+
+  -- ===== دفع رسالة للصفحة =====
+  local function toBrowser(m)
+    if not (S.browser and S.ready) then return end
+    local r = S.ranks[m.name]
+    jsend('dcMessage', {
+      name = m.name, rawName = m.name, text = m.text or false, sticker = m.sticker or false,
+      srv = m.srv or false, mine = m.mine or false,
+      rank = (m.srv and "") or rankOf(m.name),
+      rankColor = (r and r.color) or false,
+      avatar = (r and r.avatar) or false,
+      discord = (r and r.discord) or false,
+    })
+  end
+  local function pushLog(m)
+    S.log[#S.log + 1] = m
+    while #S.log > LOG_MAX do table.remove(S.log, 1) end
+  end
+  local function ownMsg(text, sticker)
+    -- الصفحة تعرض رسالتك محلياً بنفسها — هنا نسجلها للفقاعات فقط
+    pushLog({ name = myName(), text = text, sticker = sticker, srv = false, mine = true, t = S.clock })
+  end
+
+  -- ===== ويب هوك ديسكورد =====
+  local function relayChatLog(txt)
+    if CHATLOG_WEBHOOK == "" then return end
+    pcall(function()
+      local body = '{"content":' .. jsonStr("**" .. myName() .. "**: " .. txt) .. '}'
+      web.post(CHATLOG_WEBHOOK, { ['Content-Type'] = 'application/json' }, body, NOOP)
+    end)
+  end
+  local function sendAdminMsg(txt)
+    if ADMIN_WEBHOOK == "" then
+      if S.browser and S.ready then jsend('dcAdminAck', { ok = false, reason = 'disabled' }) end
+      return
+    end
+    local nm = myName()
+    local r = S.ranks[nm]
+    local dstat = "Not linked"
+    if r and r.discord then dstat = (type(r.discord) == 'string') and r.discord or "Linked" end
+    local payload = '{"embeds":[{"title":"\\ud83d\\udce8 Contact Admin","color":16744576,"fields":['
+      .. '{"name":"Player","value":' .. jsonStr(nm) .. ',"inline":true},'
+      .. '{"name":"Discord","value":' .. jsonStr(dstat) .. ',"inline":true},'
+      .. '{"name":"Message","value":' .. jsonStr(txt) .. ',"inline":false}'
+      .. '],"footer":{"text":"DRIVE CHAT"},"timestamp":"' .. os.date('!%Y-%m-%dT%H:%M:%SZ') .. '"}]}'
+    web.post(ADMIN_WEBHOOK, { ['Content-Type'] = 'application/json' }, payload, function(err)
+      if S.browser and S.ready then jsend('dcAdminAck', { ok = (err == nil) }) end
+    end)
+  end
+
+  -- ===== الربط الآمن مع الديسكورد (/link داخل الشات) =====
+  -- الفكرة: الكود يتولد داخل اللعبة ويظهر لك أنت فقط، وترسله بالديسكورد !verify
+  -- كذا مستحيل أحد يربط اسمك بحسابه — لأن الكود ما يظهر إلا على شاشتك.
+  -- رسالة نظام عامة (تنخزن بالسجل — تنعرض لأي أحد يفتح الشات لاحقاً)
+  local function sysMsg(t)
+    local m = { name = "DRIVE", text = t, srv = true, t = S.clock }
+    pushLog(m); toBrowser(m)
+  end
+  -- ⚠️ رسالة نظام خاصة: تُعرض على شاشتي فقط ولا تُخزَّن أبداً في S.log
+  -- (السجل يُزامَن للاعبين الجدد عند فتح الشات — فأي شي حساس مثل كود /link
+  --  يجب ألا يمر عليه إطلاقاً وإلا انتشر للجميع).
+  local function privMsg(t)
+    if not (S.browser and S.ready) then return end
+    -- نرسمها مباشرة على صفحتي فقط، بدون pushLog، وبدون أي بث
+    jsend('dcMessage', { name = "DRIVE", text = t, srv = true, mine = false,
+      rank = "", rankColor = false, avatar = false, discord = false })
+  end
+  -- إرسال لايك للاعب (المرحلة ب) — البوت يمنع التكرار بهوية اللايكر
+  local function sendLike(targetName)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body = '{"likerName":' .. jsonStr(myName()) .. ',"targetName":' .. jsonStr(targetName) .. '}'
+    pcall(function()
+      web.post(base .. '/drive/like', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        local ok, likes, reason = false, nil, nil
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            ok = d and d.ok; likes = d and d.likes; reason = d and d.reason
+          end)
+        end
+        if S.browser and S.ready then
+          jsend('dcLikeAck', { ok = ok and true or false, likes = likes or false, reason = reason or false, target = targetName })
+        end
+      end)
+    end)
+  end
+
+  -- حفظ وصف البروفايل (المرحلة ب)
+  -- ترميز URL للأسماء (مسافات/رموز عربية) — ضروري لطلبات GET
+  local function urlEncode(s)
+    s = tostring(s or "")
+    return (s:gsub("[^%w%-_%.~]", function(c)
+      return string.format("%%%02X", string.byte(c))
+    end))
+  end
+
+  -- ===== جسر الكلانات =====
+  -- POST لأي endpoint كلان مع اسمي، والرد يرجع للصفحة عبر dcClanAck
+  local function clanPost(endpoint, extra, okMsg)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local obj = extra or {}
+    obj.name = myName()
+    local parts = {}
+    for k, v in pairs(obj) do
+      if type(v) == 'boolean' then
+        parts[#parts+1] = jsonStr(k) .. ':' .. (v and 'true' or 'false')
+      else
+        parts[#parts+1] = jsonStr(k) .. ':' .. jsonStr(tostring(v))
+      end
+    end
+    local body = '{' .. table.concat(parts, ',') .. '}'
+    pcall(function()
+      web.post(base .. endpoint, { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        local ok, reason = false, nil
+        if not err and resp and resp.body then
+          pcall(function() local d = JSON.parse(resp.body); ok = d and d.ok; reason = d and d.reason end)
+        end
+        if S.browser and S.ready then
+          jsend('dcClanAck', { ok = ok and true or false, reason = reason or false, msg = okMsg or false })
+        end
+        -- بعد أي عملية، حدّث حالة كلاني
+        if ok then clanFetchMine() end
+      end)
+    end)
+  end
+
+  -- جلب حالة كلاني + دعواتي → dcClanMine
+  function clanFetchMine()
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local url = base .. '/drive/clan/mine?name=' .. urlEncode(myName())
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and S.browser and S.ready then
+              jsend('dcClanMine', { clan = d.clan or false, isOwner = d.isOwner or false, invites = d.invites or {} })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  -- تفاصيل كلان بالاسم → dcClanDetails
+  -- جلب إيموجيات الكلانات المتاحة → dcClanEmojis
+  local function clanFetchEmojis()
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    pcall(function()
+      web.get(base .. '/drive/clan/emojis', function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and S.browser and S.ready then
+              jsend('dcClanEmojis', { takenIdx = d.takenIdx or {} })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  local function clanFetchDetails(q)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local url = base .. '/drive/clan/details?q=' .. urlEncode(q)
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and S.browser and S.ready then
+              jsend('dcClanDetails', { clan = d.clan or false })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  local function sendDescription(txt)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body = '{"name":' .. jsonStr(myName()) .. ',"desc":' .. jsonStr(txt) .. '}'
+    pcall(function()
+      web.post(base .. '/drive/description', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        local ok, desc, hasDesc = false, "", false
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            ok = d and d.ok
+            if d and d.desc ~= nil then desc = d.desc; hasDesc = true end
+          end)
+        end
+        -- نرسل الوصف كنص فعلي حتى لو فاضي (hasDesc يميّز الفاضي المقصود عن عدم وصول رد)
+        if S.browser and S.ready then
+          jsend('dcDescAck', { ok = ok and true or false, desc = desc, hasDesc = hasDesc })
+        end
+      end)
+    end)
+  end
+
+  local function startDiscordLink()
+    -- كل رسائل الربط خاصة (privMsg) — الكود لا يمر على السجل ولا يُبث لأحد
+    if RANKS_URL == "" then privMsg("نظام الربط غير مفعّل حالياً — كلم الإدارة"); return end
+    privMsg("⏳ جاري طلب كود الربط...")
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local code = tostring(math.random(100000, 999999))
+    local steam = ""
+    pcall(function() steam = ac.getUserSteamID() or "" end)
+    local body = '{"name":' .. jsonStr(myName()) .. ',"steam":' .. jsonStr(steam) .. ',"code":' .. jsonStr(code) .. '}'
+    pcall(function()
+      web.post(base .. '/drive/linkcode', { ['Content-Type'] = 'application/json' }, body, function(err)
+        if err then
+          privMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
+        else
+          privMsg("🔗 كود الربط حقك (خاص لك فقط): " .. code)
+          privMsg("ارسله بالخاص لبوت الديسكورد (يكفي الكود لحاله)، أو بأي روم: !verify " .. code)
+          privMsg("صالح ١٠ دقايق — لا تعطيه أحد.")
+        end
+      end)
+    end)
+  end
+
+  -- ===== الرتب / الربط من البوت =====
+  local function fetchRanks()
+    if RANKS_URL == "" then return end
+    pcall(function()
+      web.get(RANKS_URL, function(err, resp)
+        if err or not resp or not resp.body then return end
+        local ok, data = pcall(function() return JSON.parse(resp.body) end)
+        if ok and type(data) == 'table' and type(data.players) == 'table' then
+          S.ranks = data.players
+        end
+      end)
+    end)
+  end
+
+  -- ===== فتح/قفل =====
+  local function openChat()
+    S.open = true
+    if S.browser and S.ready then jsend('dcFocus', true) end
+  end
+  local function closeChat()
+    S.open = false; S.wantsKbd = false; S.dragging = false
+    if S.browser and S.ready then jsend('dcBlur', true) end
+  end
+
+  local function markReady()
+    S.ready = true
+    S.initSent = false
+    S.lastOk = S.clock
+    S.acked = false
+    S.readyAt = S.clock
+  end
+
+  -- ===== أوامر الصفحة (JS -> Lua) =====
+  local function handleData(data)
+    if data == 'ready' then markReady(); return end
+    if data == 'ack' then S.acked = true; return end
+    if data:sub(1, 4) == 'kbd:' then S.wantsKbd = (data:sub(5) == '1'); return end
+    if data:sub(1, 5) == 'send:' then
+      local msg = data:sub(6)
+      if msg == '' then return end
+      -- أمر الربط: /link — ما ينرسل للشات العام، بس يولد كود التحقق
+      local ml = msg:lower()
+      if ml == '/link' or ml == '/ربط' or ml == 'link/' then
+        startDiscordLink()
+        return
+      end
+      ownMsg(msg, nil)
+      pcall(function() ac.sendChatMessage(msg) end)
+      relayChatLog(msg)
+      return
+    end
+    if data:sub(1, 6) == 'stick:' then
+      local url = data:sub(7)
+      if url == '' then return end
+      ownMsg(nil, url)
+      local idx = PICIDX[url]
+      if idx then pcall(function() ac.sendChatMessage('$STICK:' .. idx) end) end
+      relayChatLog('[Sticker/GIF]')
+      return
+    end
+    if data:sub(1, 6) == 'admin:' then
+      local txt = data:sub(7)
+      if txt ~= '' then sendAdminMsg(txt) end
+      return
+    end
+    if data:sub(1, 5) == 'like:' then
+      local target = data:sub(6)
+      if target ~= '' then sendLike(target) end
+      return
+    end
+    if data:sub(1, 5) == 'desc:' then
+      local txt = data:sub(6)
+      sendDescription(txt)
+      return
+    end
+    -- ===== أوامر الكلانات =====
+    if data:sub(1, 9) == 'clanmine:' then clanFetchMine(); return end
+    if data:sub(1, 12) == 'clandetails:' then clanFetchDetails(data:sub(13)); return end
+    if data:sub(1, 11) == 'clanemojis:' then clanFetchEmojis(); return end
+    if data:sub(1, 11) == 'clancreate:' then
+      local ok, obj = pcall(function() return JSON.parse(data:sub(12)) end)
+      if ok and obj then clanPost('/drive/clan/create', { clanName = obj.clanName, tag = obj.tag, color = obj.color, emojiIdx = obj.emojiIdx }, 'تم إنشاء الكلان') end
+      return
+    end
+    if data:sub(1, 11) == 'claninvite:' then clanPost('/drive/clan/invite', { targetName = data:sub(12) }, 'تم إرسال الدعوة 📩'); return end
+    if data:sub(1, 9) == 'clankick:' then clanPost('/drive/clan/kick', { targetName = data:sub(10) }, 'تم الطرد'); return end
+    if data:sub(1, 13) == 'clantransfer:' then clanPost('/drive/clan/transfer', { targetName = data:sub(14) }, 'تم نقل الملكية 👑'); return end
+    if data:sub(1, 10) == 'clanleave:' then clanPost('/drive/clan/leave', {}, 'غادرت الكلان'); return end
+    if data:sub(1, 11) == 'clandelete:' then clanPost('/drive/clan/delete', {}, 'تم حذف الكلان'); return end
+    if data:sub(1, 12) == 'clanrespond:' then
+      local ok, obj = pcall(function() return JSON.parse(data:sub(13)) end)
+      if ok and obj then clanPost('/drive/clan/respond', { clanId = obj.clanId, accept = obj.accept and true or false }, obj.accept and 'انضممت للكلان ✅' or 'تم الرفض') end
+      return
+    end
+    if data:sub(1, 9) == 'clanedit:' then
+      local ok, obj = pcall(function() return JSON.parse(data:sub(10)) end)
+      if ok and obj then clanPost('/drive/clan/edit', { desc = obj.desc, color = obj.color, emojiIdx = obj.emojiIdx }, 'تم الحفظ') end
+      return
+    end
+    if data:sub(1, 6) == 'notif:' then cStor.dc_notif = (data:sub(7) == '1'); return end
+    if data:sub(1, 5) == 'opac:' then cStor.dc_opacity = (tonumber(data:sub(6)) or 100) / 100; return end
+    if data == 'close' then closeChat(); return end
+  end
+
+  -- كل أمر من الصفحة يجي بصيغة "<رقم>:<الأمر>" وعلى أكثر من قناة (sendAsync + عنوان الصفحة)
+  -- ندمجها هنا مع منع التكرار — نفس الرقم ينفذ مرة وحدة فقط مهما تكرر وصوله
+  local function handleRaw(payload)
+    if type(payload) ~= 'string' or payload == '' then return end
+    local seq, cmd = payload:match('^(%d+):(.*)$')
+    if seq then
+      if S.seen[seq] then return end
+      S.seen[seq] = S.clock
+      for k, t in pairs(S.seen) do if S.clock - t > 30 then S.seen[k] = nil end end
+      handleData(cmd)
+    else
+      handleData(payload)   -- توافق مع أوامر بدون رقم
+    end
+  end
+  local function handleTitle(t)
+    if type(t) ~= 'string' then return end
+    if t == 'DRIVECHAT:ready' then markReady(); return end
+    local payload = t:match('^DRIVECHAT:(.+)$')
+    if payload then handleRaw(payload) end
+  end
+
+  -- ===== إنشاء المتصفح (دالة قابلة لإعادة الاستخدام) =====
+  -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء، فعشان محتوى الـ HTML
+  -- يملأ النافذة فعلياً عند التكبير/التصغير، نعيد إنشاءه بالحجم الجديد.
+  local WebBrowser = require('shared/web/browser')
+  local function makeBrowser(w, h, isPending)
+    local b = WebBrowser({ size = vec2(math.floor(w), math.floor(h)), backgroundColor = rgbm(0, 0, 0, 0) })
+    b:navigate(CHAT_URL)
+    if isPending then
+      -- المتصفح البديل (وقت التحجيم): نراقب جاهزيته فقط عشان نبدّله
+      b:onReceive('Drivechat', function(self, data)
+        if type(data) == 'string' and (data == 'ready' or data:find('ready')) then S.pendingReady = true end
+      end)
+      b:onTitleChange(function(self, title)
+        if type(title) == 'string' and title:find('ready') then S.pendingReady = true end
+      end)
+    else
+      b:onReceive('Drivechat', function(self, data)
+        if type(data) == 'string' then handleRaw(data) end
+      end)
+      b:onTitleChange(function(self, title) handleTitle(title) end)
+    end
+    return b
+  end
+  local function rebuildBrowser()
+    -- نبني متصفح جديد بالحجم الصح بالخلفية ونستمر نرسم القديم لين يجهز (بدون شاشة سوداء)
+    pcall(function()
+      S.pendingReady = false
+      S.pendingBrowser = makeBrowser(S.W, S.H, true)
+      S.pendingSince = S.clock
+    end)
+  end
+  pcall(function()
+    S.browser = makeBrowser(S.W, S.H)
+    S.lastNav = 0
+  end)
+
+  -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
+  -- نستبدل رسم شات CSP برسمة فاضية شفافة بالكامل + نبلع الإدخال
+  pcall(function()
+    pcall(ui.onChat, function(mode, readOnlyMode)
+      local t = rgbm(0, 0, 0, 0)
+      ui.pushStyleColor(ui.StyleColor.WindowBg, t)
+      ui.pushStyleColor(ui.StyleColor.TitleBg, t)
+      ui.pushStyleColor(ui.StyleColor.TitleBgActive, t)
+      ui.pushStyleColor(ui.StyleColor.TitleBgCollapsed, t)
+      ui.pushStyleColor(ui.StyleColor.Border, t)
+      ui.pushStyleColor(ui.StyleColor.BorderShadow, t)
+      ui.pushStyleColor(ui.StyleColor.ChildBg, t)
+      ui.pushStyleColor(ui.StyleColor.PopupBg, t)
+      ui.pushStyleColor(ui.StyleColor.Text, t)
+      ui.pushStyleColor(ui.StyleColor.Button, t)
+      ui.pushStyleColor(ui.StyleColor.ButtonHovered, t)
+      ui.pushStyleColor(ui.StyleColor.ButtonActive, t)
+      ui.pushStyleVarAlpha(0)
+      ui.popStyleColor(12)
+      ui.popStyleVar()
+      return true
+    end, function()
+      return true
+    end)
+  end)
+
+  -- ===== اعتراض رسائل AC =====
+  ac.onChatMessage(function(message, sender)
+    local msg = tostring(message)
+    if msg:find("not an administrator") or msg:find("Unrecognized command") then return true end
+    if msg:find("^SYNTAX ERROR:") or msg:find("SYNTAX ERROR: Use '") then return true end
+    -- كتم ماركرات بروتوكول بلقنات DRIVE (ترافيك/شدّة/رادار)
+    if msg:find("^!TFC_") or msg:find("^!TRAFFIC") or msg:find("^!SHADDA") or msg:find("^!RADAR") then return true end
+    if msg:find("Slot %[") or msg:find("is not configured") then return true end   -- سبام إعدادات السيرفر
+    if sender == 0 then return true end   -- صدى رسالتك — الصفحة عرضتها من قبل
+    local sidx = msg:match("^%$STICK:(%d+)$")
+    if sidx then
+      local url = ALLPICS[tonumber(sidx)]
+      if url then
+        local ssrv = not sender or sender < 0
+        local snm = ssrv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
+        local rr = S.ranks[snm]
+        local m = { name = snm, sticker = url, srv = ssrv, mine = false, t = S.clock,
+          avatar = (rr and rr.avatar) or nil }
+        pushLog(m); toBrowser(m)
+      end
+      return true
+    end
+    local srv = not sender or sender < 0
+    local nm = srv and "السيرفر" or (ac.getDriverName(sender) or ("لاعب " .. tostring(sender)))
+    -- تعريب رسائل السيرفر الشائعة
+    if srv then
+      local carN, drv = msg:match("^Car (%d+) is now driven by (.+)$")
+      if carN then msg = "السيارة " .. carN .. " صار يقودها " .. drv
+      elseif msg:find("shutting down", 1, true) then msg = "⚠️ السيرفر يسوي ريستارت — نرجع خلال ثواني، أعد الدخول 🔄"
+      elseif msg:find("You have been kicked", 1, true) then msg = "تم طردك من السيرفر"
+      elseif msg:find("You have been banned", 1, true) then msg = "تم حظرك من السيرفر"
+      end
+    end
+    local rr = S.ranks[nm]
+    local m = { name = nm, text = msg, srv = srv, mine = false, t = S.clock,
+      avatar = (rr and rr.avatar) or nil }
+    pushLog(m); toBrowser(m)
+    return true
+  end)
+
+  pushLog({ name = "DRIVE", text = "مرحباً بك في سيرفر DRIVE! · اضغط C لإظهار/إخفاء الشات 🧡", srv = true, t = 0 })
+  for _, rx in ipairs({ "onnected", "joined the server", "left the server", "has left" }) do
+    pcall(function() ac.blockSystemMessages(rx) end)
+  end
+
+  -- ===== فقاعات الإشعارات (Native — لما الشات مقفول) =====
+  local function dwBox2(t, s, x, y, w, h, c)
+    ui.pushDWriteFont(FONT); ui.setCursor(vec2(x, y))
+    ui.dwriteTextAligned(t, s, ui.Alignment.Center, ui.Alignment.Center, vec2(w, h), false, c or CW)
+    ui.popDWriteFont()
+  end
+  local function dwLeft2(t, s, x, y, w, h, c)
+    ui.pushDWriteFont(FONT); ui.setCursor(vec2(x, y))
+    ui.dwriteTextAligned(t, s, ui.Alignment.Start, ui.Alignment.Center, vec2(w, h), false, c or CW)
+    ui.popDWriteFont()
+  end
+  local AV_COLS = {
+    rgbm(0.86, 0.30, 0.24, 1), rgbm(0.24, 0.52, 0.88, 1), rgbm(0.53, 0.34, 0.83, 1),
+    rgbm(0.18, 0.62, 0.55, 1), rgbm(0.88, 0.53, 0.14, 1), rgbm(0.34, 0.58, 0.30, 1),
+    rgbm(0.80, 0.34, 0.55, 1), rgbm(0.33, 0.44, 0.74, 1), rgbm(0.62, 0.45, 0.20, 1),
+  }
+  local function nameHash(s)
+    s = s or "?"; local h = 5381
+    for i = 1, #s do h = (h * 33 + s:byte(i)) % 100000 end
+    return h
+  end
+  local function firstUtf8(s)
+    if not s or s == "" then return "?" end
+    local b = s:byte(1); local n = 1
+    if b >= 240 then n = 4 elseif b >= 224 then n = 3 elseif b >= 192 then n = 2 end
+    return s:sub(1, n)
+  end
+  local function initials(name)
+    name = name or "?"
+    if name:match("^[A-Za-z]") then return name:sub(1, 2):upper() end
+    return firstUtf8(name)
+  end
+  local AVR = 20
+  local function drawAvatar(cx, cy, r, m)
+    if m.srv then
+      ui.drawCircleFilled(vec2(cx, cy), r, rgbm(0.05, 0.05, 0.06, 1))
+      ui.drawCircle(vec2(cx, cy), r, rgbm(ACC.r, ACC.g, ACC.b, 0.95), 30, 2)
+      dwBox2("D", r * 1.05, cx - r, cy - r, r * 2, r * 2, ACC)
+      return
+    end
+    local av = m.avatar
+    if (not av or av == "" or av == false) and m.name then
+      local rr = S.ranks[m.name]
+      if rr and rr.avatar and rr.avatar ~= "" then av = rr.avatar; m.avatar = av end
+    end
+    if av and av ~= "" and av ~= false then
+      if ui.isImageReady(av) then
+        local ok = pcall(function()
+          if ui.drawImageRounded then
+            ui.drawImageRounded(av, vec2(cx - r, cy - r), vec2(cx + r, cy + r), r)
+          else
+            ui.drawImage(av, vec2(cx - r, cy - r), vec2(cx + r, cy + r))
+          end
+        end)
+        if ok then ui.drawCircle(vec2(cx, cy), r, rgbm(ACC.r, ACC.g, ACC.b, 0.6), 30, 1.5); return end
+      else
+        pcall(function() ui.decodeImage(av) end)
+      end
+    end
+    local col = AV_COLS[1 + (nameHash(m.name or "?") % #AV_COLS)]
+    ui.drawCircleFilled(vec2(cx, cy), r, col)
+    ui.drawCircle(vec2(cx, cy), r, rgbm(1, 1, 1, 0.18), 30, 1.5)
+    dwBox2(initials(m.name), r * 0.92, cx - r, cy - r, r * 2, r * 2, CW)
+  end
+  local function bubbleInner(m, areaW)
+    if m.sticker then return 96, 96 end
+    local maxInner = math.floor((areaW - AVR * 2 - 44) * 0.94)
+    local nat = ui.measureDWriteText(m.text or "", 15, 4000)
+    local innerW = math.max(30, math.min(maxInner, math.ceil(nat.x) + 2))
+    local wr = ui.measureDWriteText(m.text or "", 15, innerW)
+    return innerW, math.max(18, math.ceil(wr.y))
+  end
+  local function msgRowH(m, areaW)
+    local _, contentH = bubbleInner(m, areaW)
+    return 24 + (contentH + 16) + 14
+  end
+  local function drawMsgRow(m, x, areaW, yy, a)
+    a = a or 1
+    local mine = m.mine and not m.srv
+    local dispName = m.srv and "DRIVE SYSTEM" or (m.name or "?")
+    local nameCol = rgbm(ACC.r, ACC.g, ACC.b, a)
+    local innerW, contentH = bubbleInner(m, areaW)
+    local bubW, bubH = innerW + 24, contentH + 16
+    local avcy, bubY = yy + AVR + 2, yy + 24
+    local bx1, bx2
+    if mine then
+      drawAvatar(x + areaW - AVR - 2, avcy, AVR, m)
+      local rightEdge = x + areaW - AVR * 2 - 12
+      local nmW = math.min(220, math.ceil(ui.measureDWriteText(dispName, 14, 400).x) + 4)
+      ui.pushDWriteFont(FONT); ui.setCursor(vec2(rightEdge - nmW, yy))
+      ui.dwriteTextAligned(dispName, 14, ui.Alignment.End, ui.Alignment.Center, vec2(nmW, 18), false, nameCol)
+      ui.popDWriteFont()
+      bx2 = rightEdge; bx1 = bx2 - bubW
+      ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), rgbm(0.15, 0.15, 0.17, 0.96 * a), 12)
+      ui.drawRectFilled(vec2(bx2 - 3, bubY + 4), vec2(bx2, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.95 * a), 2)
+    else
+      drawAvatar(x + AVR + 2, avcy, AVR, m)
+      local nameX = x + AVR * 2 + 12
+      dwLeft2(dispName, 14, nameX, yy, 240, 18, nameCol)
+      bx1 = nameX; bx2 = bx1 + bubW
+      ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), m.srv and rgbm(0.11, 0.115, 0.14, 0.96 * a) or rgbm(0.17, 0.17, 0.19, 0.96 * a), 12)
+      if m.srv then ui.drawRectFilled(vec2(bx1, bubY + 4), vec2(bx1 + 3, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * a), 2) end
+    end
+    if m.sticker then
+      if ui.isImageReady(m.sticker) then
+        pcall(function() ui.drawImage(m.sticker, vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104)) end)
+      else
+        pcall(function() ui.decodeImage(m.sticker) end)
+        ui.drawRectFilled(vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104), rgbm(0.16, 0.16, 0.19, 1), 8)
+      end
+    else
+      ui.setCursor(vec2(bx1 + 12, bubY + 8))
+      ui.dwriteTextAligned(m.text or "", 15, ui.Alignment.End, ui.Alignment.Start, vec2(innerW, contentH), true,
+        m.srv and rgbm(CY.r, CY.g, CY.b, a) or rgbm(1, 1, 1, a))
+    end
+    return 24 + bubH + 14
+  end
+  local function drawChatLog(sim)
+    if #S.log == 0 then return end
+    if not cStor.dc_notif then return end   -- إشعارات الفقاعات معطّلة من زر 🔔
+    if S.open then return end
+    local recent = {}
+    for i = #S.log, math.max(1, #S.log - 6), -1 do
+      if S.clock - S.log[i].t < 16 then table.insert(recent, 1, S.log[i]) end
+    end
+    if #recent == 0 then return end
+    local w = 620
+    local hs, total = {}, 6
+    for i, m in ipairs(recent) do hs[i] = msgRowH(m, w); total = total + hs[i] end
+    local cy0 = sim.windowHeight - total - 190
+    local lx = math.max(0, math.min(sim.windowWidth - w, cStor.dc_logX or 16))
+    local ly = ((cStor.dc_logY or -1) >= 0) and cStor.dc_logY or cy0
+    ly = math.max(0, math.min(sim.windowHeight - total, ly))
+    ui.transparentWindow("driveChatLog", vec2(lx, ly), vec2(w, total), function()
+      local lp = ui.mouseLocalPos()
+      local over = lp.x >= -6 and lp.x <= (w + 6) and lp.y >= -6 and lp.y <= (total + 6)
+      if over and ui.mouseDown(ui.MouseButton.Left) and not ui.anyItemActive() and not S.logDrag then
+        S.logDrag = true; S.logDragStart = ui.mousePos(); S.logOfsStart = vec2(lx, ly)
+      end
+      if S.logDrag then
+        if ui.mouseDown(ui.MouseButton.Left) then
+          local mp = ui.mousePos()
+          cStor.dc_logX = S.logOfsStart.x + (mp.x - S.logDragStart.x)
+          cStor.dc_logY = S.logOfsStart.y + (mp.y - S.logDragStart.y)
+        else S.logDrag = false end
+      end
+      local target = (over or S.logDrag or (S.clock - S.log[#S.log].t < 4)) and 1 or 0
+      S.chatReveal = (S.chatReveal or 1) + (target - (S.chatReveal or 1)) * 0.14
+      local rv = S.chatReveal
+      local yy = 2
+      for i, m in ipairs(recent) do
+        local age = S.clock - m.t
+        local a = (age > 13 and math.max(0, 1 - (age - 13) / 3) or 1) * rv
+        drawMsgRow(m, 0, w, yy, a)
+        yy = yy + hs[i]
+      end
+    end)
+  end
+
+  local function inRect2(p, a, b)
+    return p.x >= a.x and p.y >= a.y and p.x <= b.x and p.y <= b.y
+  end
+
+  -- ===== الرسم الرئيسي =====
+  local function draw()
+    local sim = ac.getSim()
+    if not sim then return end
+    local now = S.clock
+
+    -- قراءة عنوان الصفحة كل فريم — قناة أوامر احتياطية (الصفحة تكتب الأوامر بالعنوان)
+    if S.browser then
+      pcall(function() handleTitle(S.browser:title() or '') end)
+    end
+
+    -- إخفاء شات AC الأصلي (نفس طريقة IDDL): نلقى نافذته ونخفيها ونصغّرها ونطلعها برا الشاشة
+    -- ويعاد التطبيق كل ٥ ثواني عشان لو اللعبة رجعتها
+    pcall(function()
+      if not S.vanillaWin then
+        if now - (S.vanillaTry or -10) < 3 then return end
+        S.vanillaTry = now
+        for _, nm in ipairs({ 'Chat', 'chat', 'AC_CHAT', 'ac_chat', 'CHAT' }) do
+          local w = ac.accessAppWindow(nm)
+          if w and w:valid() then S.vanillaWin = w; break end
+        end
+      end
+      local w = S.vanillaWin
+      if w and w:valid() and (not S.vanillaHidden or now >= (S.vanillaAt or 0)) then
+        w:setVisible(false)
+        w:resize(vec2(1, 1))
+        w:move(vec2(99999, 99999))
+        pcall(function() w:setRedirectLayer(99) end)
+        S.vanillaHidden = true
+        S.vanillaAt = now + 5
+      end
+    end)
+
+    -- لو الصفحة جهزت وما وصلنا تأكيد إن sendAsync توصلها — نتحول تلقائياً لوضع الطوارئ
+    if S.browser and S.ready and S.initSent and not S.acked and not S.jsMode and (now - S.readyAt) > 3 then
+      S.jsMode = true
+      S.initSent = false   -- نعيد دفع كل شي بالقناة الجديدة
+      ac.log('DriveChat: sendAsync not acked - switching to javascript-url mode')
+    end
+
+    -- إعادة المحاولة لين الصفحة تجهز (navigate كل 5 ثواني)
+    if S.browser and not S.ready then
+      if not S.ready and (now - S.lastNav) > 5 then
+        S.navRetries = S.navRetries + 1
+        S.lastNav = now
+        pcall(function() S.browser:navigate(CHAT_URL .. '?r=' .. S.navRetries) end)
+      end
+    end
+
+    -- نبض: لو الصفحة جهزت وبعدين وقفت ترد — أعد التحميل
+    if S.browser and S.ready and (not S.jsMode) and S.lastOk > 0 and (now - S.lastOk) > 60 then
+      S.ready = false; S.initSent = false; S.lastNav = now; S.lastOk = 0
+      pcall(function() S.browser:navigate(CHAT_URL .. '?hb=' .. tostring(math.floor(now))) end)
+    end
+
+    -- دفعة أولية للصفحة (مرة واحدة بعد كل ready)
+    if S.browser and S.ready and not S.initSent then
+      S.initSent = true
+      jsend('dcInit', {
+        me = myName(),
+        notifs = cStor.dc_notif and 1 or 0,
+        opacity = math.floor((cStor.dc_opacity or 1) * 100),
+        adminEnabled = (ADMIN_WEBHOOK ~= "") and 1 or 0,
+      })
+      jsend('dcStickers', STICKERS)
+      jsend('dcGifs', GIFS)
+      -- مزامنة الرسائل السابقة
+      for _, m in ipairs(S.log) do toBrowser(m) end
+    end
+
+    -- الرتب / الربط من البوت (كل 30 ثانية)
+    if RANKS_URL ~= "" and (now - S.lastRanks) > 30 then
+      S.lastRanks = now
+      fetchRanks()
+    end
+
+    -- دفع قائمة الأعضاء + بياناتهم الحية (كل ثانية)
+    if S.browser and S.ready and (now - S.lastPush) > 1 then
+      S.lastPush = now
+      pcall(function()
+        local my = ac.getCar(0)
+        local list, seen = {}, {}
+        for i = 0, (sim.carsCount or 0) - 1 do
+          local car = ac.getCar(i)
+          local nm = ac.getDriverName(i) or ("لاعب " .. i)
+          if car and car.isConnected and not car.isAIControlled and not string.find(nm, "Traffic") then
+            local jk = i .. '|' .. nm
+            if not S.joined[jk] then S.joined[jk] = now end
+            seen[jk] = true
+            local r = S.ranks[nm]
+            local d = 0
+            if my and i ~= 0 then d = (car.position - my.position):length() end
+            local carName = ''
+            pcall(function() carName = ac.getCarName(i) or '' end)
+            list[#list + 1] = {
+              name = nm, isMe = (i == 0), status = 'on',
+              rank = rankOf(nm),
+              rankColor = (r and r.color) or false,
+              discord = (r and r.discord) or false,
+              avatar = (r and r.avatar) or nil,
+              car = carName,
+              dur = math.floor(now - S.joined[jk]),
+              dist = math.floor(d),
+              speed = math.floor(car.speedKmh or 0),
+              level = (r and r.level) or 0,                       -- لفل اللعب
+              levelTitle = (r and r.levelTitle) or false,         -- مسمّى اللفل
+              totalMinutes = (r and r.totalMinutes) or 0,         -- إجمالي دقايق الجلوس
+              firstSeen = (r and r.firstSeen) or false,           -- أول دخول (ms)
+              desc = (r and r.desc) or false,                     -- وصف البروفايل
+              likes = (r and r.likes) or 0,                       -- عدد اللايكات
+              clan = (r and r.clan) or false,                     -- اسم الكلان
+              clanTag = (r and r.clanTag) or false,               -- تاق الكلان
+              clanColor = (r and r.clanColor) or false,           -- لون الكلان
+              clanEmoji = (r and r.clanEmoji) or false,           -- إيموجي الكلان
+            }
+          end
+        end
+        for k in pairs(S.joined) do if not seen[k] then S.joined[k] = nil end end
+        jsend('dcMembers', list, function() S.lastOk = S.clock end)
+      end)
+    end
+
+    -- فقاعات الإشعارات (الشات مقفول)
+    pcall(function() drawChatLog(sim) end)
+
+    -- نافذة الشات (الشات مفتوح)
+    if S.open and not S.browser then S.open = false; S.wantsKbd = false end
+    if S.open and S.browser then
+      if not S.sizeLoaded then
+        S.sizeLoaded = true
+        if (cStor.dc_w or 0) >= 480 and (cStor.dc_h or 0) >= 360 then
+          S.W = cStor.dc_w; S.H = cStor.dc_h
+        end
+      end
+      if not S.pos then
+        if cStor.dc_posX >= 0 and cStor.dc_posY >= 0 then
+          S.pos = vec2(cStor.dc_posX, cStor.dc_posY)
+        else
+          S.pos = vec2((sim.windowWidth - S.W) * 0.5, (sim.windowHeight - S.H) * 0.5)
+        end
+      end
+      S.pos.x = math.max(-S.W + 80, math.min(S.pos.x, sim.windowWidth - 80))
+      S.pos.y = math.max(0, math.min(S.pos.y, sim.windowHeight - 60))
+
+      -- سحب من الهيدر (أعلى 60px — ما عدا يسار 300px عشان أزرار التحكم RTL)
+      local cmp = ui.mousePos()
+      local clp = cmp - S.pos
+      local cClicked = ui.mouseClicked(ui.MouseButton.Left)
+      -- منطقة السحب من الهيدر — نسبية للحجم (عشان ما تتغير مع التكبير/التصغير)
+      local hdrH = S.H * (60 / 620)          -- ارتفاع الهيدر النسبي
+      local btnZone = S.W * (300 / 920)      -- يسار الهيدر فيه أزرار التحكم — نستثنيها
+      if cClicked and not S.dragging and inRect2(clp, vec2(btnZone, 0), vec2(S.W, hdrH)) then
+        S.dragging = true; S.dragOff = clp:clone()
+      end
+      if S.dragging then
+        if ui.mouseDown(ui.MouseButton.Left) then
+          S.pos = cmp - S.dragOff
+          S.pos.x = math.max(0, math.min(sim.windowWidth - S.W, S.pos.x))
+          S.pos.y = math.max(0, math.min(sim.windowHeight - S.H, S.pos.y))
+        else
+          S.dragging = false
+          cStor.dc_posX = S.pos.x; cStor.dc_posY = S.pos.y
+        end
+      end
+
+      -- بدّل المتصفح البديل (بعد التحجيم) أول ما يجهز — بدون شاشة سوداء
+      if S.pendingBrowser then
+        local timedout = (S.clock - (S.pendingSince or 0)) > 4
+        if S.pendingReady or timedout then
+          pcall(function()
+            S.pendingBrowser:onReceive('Drivechat', function(self, data)
+              if type(data) == 'string' then handleRaw(data) end
+            end)
+            S.pendingBrowser:onTitleChange(function(self, title) handleTitle(title) end)
+          end)
+          S.browser = S.pendingBrowser
+          S.pendingBrowser = nil
+          S.ready = false; S.initSent = false; S.jsMode = false
+          S.lastNav = S.clock
+        else
+          pcall(function() S.pendingBrowser:draw(vec2(-9999, -9999), vec2(S.W, S.H), true) end)
+        end
+      end
+
+      -- ===== التحجيم: نفس نظام المنيو [28] بالحرف =====
+      -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
+      local GRIP = 26
+      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
+        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)   -- المتصفح بنفس حجم النافذة (يُعاد بناؤه عند التحجيم)
+        local mlp = ui.mouseLocalPos()
+
+        -- تحجيم من الزاوية السفلية اليمنى — نفس منطق drawMenuHost بالضبط
+        local overGrip = mlp.x >= (S.W - GRIP) and mlp.x <= S.W and mlp.y >= (S.H - GRIP) and mlp.y <= S.H
+        if overGrip and ui.mouseDown(ui.MouseButton.Left) and not S.sizing and not S.dragging then
+          S.sizing = true; S.szStart = ui.mousePos(); S.szWH = vec2(S.W, S.H)
+        end
+        if S.sizing then
+          if ui.mouseDown(ui.MouseButton.Left) then
+            local mp = ui.mousePos()
+            S.W = math.max(480, math.min(1400, S.szWH.x + (mp.x - S.szStart.x)))
+            S.H = math.max(360, math.min(950, S.szWH.y + (mp.y - S.szStart.y)))
+          else
+            S.sizing = false
+            cStor.dc_w = S.W; cStor.dc_h = S.H
+            rebuildBrowser()   -- أعد بناء المتصفح بالحجم الجديد عشان المحتوى يملأ النافذة
+          end
+        end
+
+        -- علامة المقبض (٣ خطوط برتقالية بالزاوية السفلية اليمنى)
+        do
+          local hot = overGrip or S.sizing
+          ui.drawRectFilled(vec2(S.W - GRIP, S.H - GRIP), vec2(S.W, S.H), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.20 or 0.0), 6)
+          for gi = 1, 3 do
+            local o = gi * 6
+            ui.drawLine(vec2(S.W - o, S.H - 3), vec2(S.W - 3, S.H - o), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.95 or 0.5), 2)
+          end
+          if hot then ui.setMouseCursor(ui.MouseCursor.ResizeNWSE) end
+        end
+
+        -- إدخال الماوس للصفحة — فقط لو مو محجّم/ساحب ومو فوق المقبض
+        if not S.dragging and not S.sizing and not overGrip then
+          local uis = ac.getUI()
+          S.browser:mouseInput(vec2(mlp.x / S.W, mlp.y / S.H),
+            { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
+          S.browser:focus(true)
+          ui.setMouseCursor(S.browser:mouseCursor())
+        end
+        if not S.dragging and not S.sizing then
+          local kb = ui.captureKeyboard(true, true)
+          if kb then S.browser:keyboard(kb) end
+        end
+      end)
+
+      -- كليك برا النافذة = قفل (ما نقفل وقت التحجيم/السحب)
+      if cClicked and not S.dragging and not S.sizing and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
+        closeChat()
+      end
+      -- Escape = قفل
+      if ac.isKeyDown(ui.KeyIndex.Escape) then closeChat() end
+    end
+  end
+
+  -- ===== الواجهة العامة =====
+  return {
+    update = function(dt)
+      S.clock = S.clock + dt
+      -- زر C يفتح الشات فقط — الإغلاق: ESC أو ✕ أو كليك برا النافذة
+      -- (عشان كتابة حرف c أو أي حرف اختصار ما تسوي شي وأنت تكتب)
+      if not S.open then
+        local canCap = true
+        if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
+        if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
+        local dn = ui.keyboardButtonDown(KEY)
+        if dn and not S.prevKey and canCap then openChat() end
+        S.prevKey = dn
+      else
+        S.prevKey = false
+      end
+      chatTyping = S.open   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
+
+      -- تجميد اختصارات كل السكربتات الثانية (الشدّات/الأدمن...) وقت ما الشات مفتوح:
+      -- نرفع وضع الإدخال إلى UI مع حفظ/استرجاع الوضع السابق (نفس علاج كراش ReplayManager)
+      if S.open and not S.inputSaved then
+        S.inputSaved = true
+        pcall(function()
+          if ac.getCurrentInputMethod then S.savedInput = ac.getCurrentInputMethod() end
+          if ac.setCurrentInputMethod and ac.UserInputMode then ac.setCurrentInputMethod(ac.UserInputMode.UI) end
+        end)
+      elseif (not S.open) and S.inputSaved then
+        S.inputSaved = false
+        pcall(function()
+          if ac.setCurrentInputMethod then
+            if S.savedInput ~= nil then ac.setCurrentInputMethod(S.savedInput)
+            elseif ac.UserInputMode and ac.UserInputMode.Game then ac.setCurrentInputMethod(ac.UserInputMode.Game) end
+          end
+        end)
+      end
+    end,
+    draw = function()
+      local ok, err = pcall(draw)
+      if not ok and not S.errLogged then S.errLogged = true; ac.log("DriveChat draw error: " .. tostring(err)) end
+    end,
+    toggle = function()
+      if S.open then closeChat() else openChat() end
+    end,
+    isOpen = function() return S.open end,
+    -- معلومات رتبة لاعب (يستخدمها بلوك التاقات [29]): {rank, color, discord, avatar} أو nil
+    getRank = function(name)
+      local r = S.ranks[name]
+      if r and r.rank and r.rank ~= '' then return r end
+      local fr = ADMIN_NAMES[name]
+      if fr then return { rank = fr } end
+      return nil
+    end,
+    push = function(name, text, isServer)
+      local m = { name = name, text = text, srv = isServer and true or false, t = S.clock }
+      pushLog(m); toBrowser(m)
+    end,
+  }
+end)
+if not __dcOk then
+  ac.log("DriveChat load failed: " .. tostring(DriveChat))
+  DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
+end
+
+--=================================================================
+-- [29] DRIVE TAGS  (أسماء اللاعبين فوق السيارات — DRIVE Community)
+--   رسم مباشر على الشاشة: نسقط موقع كل سيارة بـ ac.worldCoordinateToScreen
+--   ونرسم التاق فوقها — بدون ui.onDriverNameTag نهائياً (كان يبدّل الأسماء
+--   بين السيارات لما يشتغل من سكربت سيرفر). الاسم والموقع يُقرآن من نفس
+--   السيارة بنفس اللحظة، فتبادل الأسماء مستحيل.
+--   الشكل: [علم] الاسم [بادج الرتبة بلونها من نظام /link] — هوية DRIVE.
+--=================================================================
+local __dtOk, DriveTags = pcall(function()
+  local T = {
+    ENABLED   = true,
+    DISTANCE  = 150,    -- أقصى مسافة تظهر فيها التاقات (متر)
+    HEIGHT    = 1.35,   -- ارتفاع التاق فوق مركز السيارة (متر)
+    FONT      = "Segoe UI;Weight=Bold",
+    SHOW_FLAG = true,   -- علم الدولة جنب الاسم
+    MAX_SIZE  = 26,     -- حجم الخط وأنت قريب
+    MIN_SIZE  = 13,     -- حجم الخط عند أبعد مسافة
+  }
+  local ACC2 = rgbm(1.00, 0.45, 0.06, 1)
+  local RANK_COLS = {
+    admin = rgbm(0.90, 0.28, 0.30, 1),
+    mod   = rgbm(0.31, 0.61, 0.98, 1),
+    vip   = rgbm(0.96, 0.77, 0.09, 1),
+  }
+  local measureCache = {}
+  local function meas(txt, size)
+    local k = size .. '|' .. txt
+    local v = measureCache[k]
+    if not v then v = ui.measureDWriteText(txt, size); measureCache[k] = v end
+    return v
+  end
+  local function levelOf(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.level or r.level <= 0 then return nil end
+    return r.level
+  end
+  -- كلان اللاعب للتاق: يرجع (tag, color) أو nil
+  local function clanInfo(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.clanTag or r.clanTag == '' then return nil end
+    local col = rgbm(0.53, 0.34, 0.83, 1)   -- بنفسجي افتراضي للكلان
+    local hex = r.clanColor
+    if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
+      col = rgbm((tonumber(hex:sub(2,3),16) or 135)/255, (tonumber(hex:sub(4,5),16) or 87)/255, (tonumber(hex:sub(6,7),16) or 212)/255, 1)
+    end
+    return tostring(r.clanTag), col
+  end
+  local function rankInfo(name)
+    local ok, r = pcall(function() return DriveChat.getRank(name) end)
+    if not ok or not r or not r.rank or r.rank == '' then return nil end
+    local col = ACC2
+    local hex = r.color
+    if type(hex) == 'string' and #hex >= 7 and hex:sub(1, 1) == '#' then
+      local rr = (tonumber(hex:sub(2, 3), 16) or 247) / 255
+      local gg = (tonumber(hex:sub(4, 5), 16) or 130) / 255
+      local bb = (tonumber(hex:sub(6, 7), 16) or 14) / 255
+      col = rgbm(rr, gg, bb, 1)
+    else
+      col = RANK_COLS[tostring(r.rank):lower()] or ACC2
+    end
+    return tostring(r.rank), col
+  end
+  local flagCache = {}
+  local function flagPath(i)
+    local p = flagCache[i]
+    if p ~= nil then if p ~= false then return p end return nil end
+    local code = nil
+    pcall(function() code = ac.getDriverNationCode(i) end)
+    if code and code ~= '' then
+      if code == 'PLA' then code = 'AC' end
+      p = "/content/gui/NationFlags/" .. string.upper(code) .. ".png"
+    else
+      p = false
+    end
+    flagCache[i] = p
+    if p ~= false then return p end
+    return nil
+  end
+  local suppressed = false
+
+  local function drawOneTag(car, sw, sh, camPos, camFwd)
+    local nm = ac.getDriverName(car.index) or ''
+    if nm == '' then return end
+    local dist = car.distanceToCamera or 9999
+    local maxD = tagStore.tg_distance or T.DISTANCE
+    if dist <= 0.5 or dist > maxD then return end
+    local wpos = car.position + vec3(0, tagStore.tg_height or T.HEIGHT, 0)
+    if camPos and camFwd then
+      local rel = wpos - camPos
+      if rel:dot(camFwd) <= 0 then return end   -- خلف الكاميرا
+    end
+    local sp = nil
+    pcall(function() sp = ui.projectPoint(wpos) end)   -- نفس دالة IDDL (تشتغل داخل drawUI)
+    if not sp then return end
+    if sp.x ~= sp.x or sp.y ~= sp.y then return end    -- NaN = خلف الكاميرا / إسقاط فاشل
+    if sp.x < -500 or sp.y < -500 or sp.x > sw + 500 or sp.y > sh + 500 then return end
+    local t = 1 - dist / maxD
+    local alpha = math.min(1, math.max(0, t * 3.2)) * (tagStore.tg_opacity or 1)
+    if alpha <= 0.03 then return end
+    local size = math.floor((T.MIN_SIZE + (T.MAX_SIZE - T.MIN_SIZE) * t) * (tagStore.tg_scale or 1) + 0.5)
+    local nmSz = meas(nm, size)
+    local gap = math.max(5, size * 0.34)
+    local fl = (T.SHOW_FLAG and tagStore.tg_flag == 1) and flagPath(car.index) or nil
+    local flS = fl and (size + 4) or 0
+    local rankText, rankCol = rankInfo(nm)
+    local rankSize = math.max(10, math.floor(size * 0.72))
+    local pillW, pillH, rkSz = 0, 0, nil
+    if rankText then
+      rkSz = meas(rankText, rankSize)
+      pillW = rkSz.x + size * 0.7
+      pillH = rkSz.y + size * 0.28
+    end
+    -- لفل اللعب (Lv.N) — حبّة صغيرة برتقالية بعد الرتبة
+    local lvNum = levelOf(nm)
+    local lvText, lvW, lvH, lvSz = nil, 0, 0, nil
+    if lvNum then
+      lvText = "Lv." .. lvNum
+      lvSz = meas(lvText, rankSize)
+      lvW = lvSz.x + size * 0.6
+      lvH = rkSz and pillH or (lvSz.y + size * 0.28)
+    end
+    -- كلان (تاق) — حبّة بلون الكلان بعد اللفل
+    local clTag, clCol = clanInfo(nm)
+    local clText, clW, clH, clSz = nil, 0, 0, nil
+    if clTag then
+      clText = "[" .. clTag .. "]"
+      clSz = meas(clText, rankSize)
+      clW = clSz.x + size * 0.6
+      clH = (lvH > 0) and lvH or (clSz.y + size * 0.28)
+    end
+    local cw = nmSz.x + (fl and (flS + gap) or 0) + (rankText and (gap + pillW) or 0) + (lvText and (gap + lvW) or 0) + (clText and (gap + clW) or 0)
+    local ch = math.max(nmSz.y, flS, pillH, lvH, clH)
+    local padX, padY = size * 0.45, size * 0.26
+    local x0 = sp.x - (cw + padX * 2) * 0.5
+    local y0 = sp.y - (ch + padY * 2)   -- الصندوق يجلس فوق نقطة الإسقاط
+    local x1 = x0 + cw + padX * 2
+    local y1 = y0 + ch + padY * 2
+    -- صندوق DRIVE: أسود + خط برتقالي سفلي
+    ui.drawRectFilled(vec2(x0, y0), vec2(x1, y1), rgbm(0.03, 0.03, 0.04, 0.90 * alpha), size * 0.38)
+    ui.drawRectFilled(vec2(x0 + 6, y1 - 2.4), vec2(x1 - 6, y1), rgbm(ACC2.r, ACC2.g, ACC2.b, 0.9 * alpha), 1.5)
+    local x = x0 + padX
+    local yMid = (y0 + y1) * 0.5
+    if fl then
+      pcall(function()
+        ui.drawImage(fl, vec2(x, yMid - flS * 0.5), vec2(x + flS, yMid + flS * 0.5), rgbm(1, 1, 1, alpha))
+      end)
+      x = x + flS + gap
+    end
+    ui.setCursor(vec2(x, yMid - nmSz.y * 0.5))
+    ui.beginOutline()
+    ui.dwriteText(nm, size, rgbm(1, 1, 1, alpha))
+    ui.endOutline(rgbm(0, 0, 0, 0.9 * alpha), math.max(2, size * 0.14))
+    x = x + nmSz.x
+    if rankText then
+      x = x + gap
+      local py0 = yMid - pillH * 0.5
+      ui.drawRectFilled(vec2(x, py0), vec2(x + pillW, py0 + pillH),
+        rgbm(rankCol.r * 0.22, rankCol.g * 0.22, rankCol.b * 0.22, 0.95 * alpha), pillH * 0.5)
+      ui.drawRect(vec2(x, py0), vec2(x + pillW, py0 + pillH),
+        rgbm(rankCol.r, rankCol.g, rankCol.b, 0.9 * alpha), pillH * 0.5, nil, 1.4)
+      ui.setCursor(vec2(x + (pillW - rkSz.x) * 0.5, py0 + (pillH - rkSz.y) * 0.5))
+      ui.dwriteText(rankText, rankSize, rgbm(rankCol.r, rankCol.g, rankCol.b, alpha))
+      x = x + pillW
+    end
+    if lvText then
+      x = x + gap
+      local ly0 = yMid - lvH * 0.5
+      ui.drawRectFilled(vec2(x, ly0), vec2(x + lvW, ly0 + lvH),
+        rgbm(ACC2.r * 0.22, ACC2.g * 0.22, ACC2.b * 0.22, 0.95 * alpha), lvH * 0.5)
+      ui.drawRect(vec2(x, ly0), vec2(x + lvW, ly0 + lvH),
+        rgbm(ACC2.r, ACC2.g, ACC2.b, 0.9 * alpha), lvH * 0.5, nil, 1.4)
+      ui.setCursor(vec2(x + (lvW - lvSz.x) * 0.5, ly0 + (lvH - lvSz.y) * 0.5))
+      ui.dwriteText(lvText, rankSize, rgbm(ACC2.r, ACC2.g, ACC2.b, alpha))
+      x = x + lvW
+    end
+    if clText then
+      x = x + gap
+      local cy0 = yMid - clH * 0.5
+      ui.drawRectFilled(vec2(x, cy0), vec2(x + clW, cy0 + clH),
+        rgbm(clCol.r * 0.22, clCol.g * 0.22, clCol.b * 0.22, 0.95 * alpha), clH * 0.5)
+      ui.drawRect(vec2(x, cy0), vec2(x + clW, cy0 + clH),
+        rgbm(clCol.r, clCol.g, clCol.b, 0.9 * alpha), clH * 0.5, nil, 1.4)
+      ui.setCursor(vec2(x + (clW - clSz.x) * 0.5, cy0 + (clH - clSz.y) * 0.5))
+      ui.dwriteText(clText, rankSize, rgbm(clCol.r, clCol.g, clCol.b, alpha))
+    end
+  end
+
+  return {
+    update = function(dt)
+      -- كتم أسماء AC الافتراضية (لو مفعلة بإعدادات اللاعب) عشان ما تطلع دبل فوق تاقاتنا
+      if not suppressed then
+        local s = ac.getSim()
+        if s and s.driverNamesShown then
+          pcall(function()
+            ui.onDriverNameTag(true, rgbm(0, 0, 0, 0), function() end, { tagSize = vec2(16, 16) })
+          end)
+          suppressed = true
+        end
+      end
+    end,
+    draw = function()
+      if not T.ENABLED then return end
+      if tagStore.tg_enabled == 0 then return end
+      local s = ac.getSim()
+      if not s then return end
+      local sw, sh = s.windowWidth, s.windowHeight
+      local camPos, camFwd = nil, nil
+      pcall(function() if ac.getCameraPosition then camPos = ac.getCameraPosition() end end)
+      pcall(function() if ac.getCameraForward then camFwd = ac.getCameraForward() end end)
+      ui.transparentWindow("driveTagsOverlay", vec2(0, 0), vec2(sw, sh), false, function()
+        ui.pushDWriteFont(T.FONT)
+        for i = 0, (s.carsCount or 0) - 1 do
+          if i ~= s.focusedCar then
+            local car = ac.getCar(i)
+            local dn = ac.getDriverName(i) or ""
+            if car and car.isConnected and not car.isAIControlled and not string.find(dn, "Traffic") then
+              pcall(drawOneTag, car, sw, sh, camPos, camFwd)
+            end
+          end
+        end
+        ui.popDWriteFont()
+      end, ui.WindowFlags.NoInputs + ui.WindowFlags.NoMouseInputs)
+    end,
+  }
+end)
+if not __dtOk then
+  ac.log("DriveTags load failed: " .. tostring(DriveTags))
+  DriveTags = { update = function() end, draw = function() end }
+end
 function script.update(dt)
   Core.update(dt)
 
@@ -1637,8 +3060,10 @@ function script.update(dt)
   extrasUpdate()
   rewindUpdate(dt)
   shaddaUpdate(dt)
-end
 
+  pcall(function() DriveChat.update(dt) end)
+  pcall(function() DriveTags.update(dt) end)   -- [29] تاقات الأسماء فوق السيارات
+end
 --=================================================================
 -- [25] SCREEN HUD  (الطبقات فوق الشاشة)
 --=================================================================
@@ -1648,7 +3073,6 @@ end
 local function drawOpenHint()
   if not CFG.SHOW_OPEN_HINT then return end
   if panelOpen then return end
-  if Core.clock - lastDrawClock > 0.5 then return end
 
   local screen = ac.getUI().windowSize
   -- أول ثواني بعد الدخول: تنبيه أكبر وأوضح، بعدها يرجع صغير وهادي
@@ -1667,8 +3091,59 @@ local function drawOpenHint()
   end, ui.WindowFlags.NoInputs + ui.WindowFlags.NoMouseInputs)
 end
 
+-- شعار "اضغط C لفتح الشات" — أسفل الشاشة، يظهر فقط لما يكون الشات مقفول (نفس ستايل شعار D)
+local function drawChatHint()
+  if not CFG.SHOW_OPEN_HINT then return end
+  if DriveChat.isOpen() then return end
+
+  local screen = ac.getUI().windowSize
+  local intro = Core.clock < CFG.HINT_INTRO_SEC
+  local k = intro and 1.35 or 0.92
+  local w, h = 280 * k, 50 * k
+  local x = (screen.x - w) * 0.5
+  local y = screen.y - h - 16
+  ui.transparentWindow("driveChatHint", vec2(x, y), vec2(w, h), true, true, function()
+    local pulse = 0.55 + 0.45 * math.abs(math.sin(Core.clock * 2))
+    -- زر شفاف يغطي التلميح كامل — الضغط عليه يفتح الشات (مثل زر C)
+    local clicked = ui.invisibleButton("##chatHintBtn", vec2(w, h))
+    local hover = ui.itemHovered()
+    ui.drawRectFilled(vec2(0, 0), vec2(w, h), rgbm(0.035, 0.035, 0.042, intro and 0.93 or (hover and 0.95 or 0.86)), 12 * k)
+    ui.drawRect(vec2(0, 0), vec2(w, h), rgbm(ACC.r, ACC.g, ACC.b, hover and 0.9 or (0.25 + 0.45 * pulse)), 12 * k, nil, 1.5 * k)
+    drawLogo(12 * k, 9 * k, 74 * k, h - 9 * k)
+    ui.drawLine(vec2(84 * k, 11 * k), vec2(84 * k, h - 11 * k), rgbm(1, 1, 1, 0.12), 1)
+    dwBox("اضغط  C  أو اضغط هنا لفتح الشات", 13.5 * k,
+      92 * k, 0, w - 104 * k, h, rgbm(CW.r, CW.g, CW.b, intro and 1.0 or (0.70 + 0.30 * pulse)))
+    if hover then ui.setMouseCursor(ui.MouseCursor.Hand) end
+    if clicked then DriveChat.toggle() end
+  end)
+end
+
+--=================================================================
+-- [30] HIDE DEFAULT CAR LABELS  (إخفاء أسماء AC/CSP الافتراضية فوق السيارات)
+--   نفس طريقة IDDL: ac.hideCarLabels لكل سيارة، يعاد تطبيقها كل ثانيتين
+--   وعند تغير عدد السيارات — عشان تاقات DRIVE هي الوحيدة الظاهرة.
+--=================================================================
+local _labelHide = { last = -10, count = -1 }
+function script.draw3D()
+  pcall(function()
+    local s = ac.getSim()
+    local total = (s and s.carsCount) or 0
+    if total ~= _labelHide.count or (Core.clock - _labelHide.last) > 2.0 then
+      for ci = 0, total - 1 do
+        ac.hideCarLabels(ci, true)
+      end
+      _labelHide.count = total
+      _labelHide.last = Core.clock
+    end
+  end)
+end
+
 function script.drawUI()
+  pcall(function() DriveTags.draw() end)   -- [29] التاقات (تحت كل النوافذ)
+  DriveChat.draw()
+  drawMenuHost()   -- [28] المضيف الدائم — المنيو يشتغل بدون تفعيل الاكسترا
   drawOpenHint()
+  drawChatHint()
 
   -- حماية الشبح
   if Core.ghostOn then
@@ -1694,4 +3169,24 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded")
+ac.log("DRIVE Panel loaded (v6.2 — XP levels (tag + profile))")
+
+--=================================================================
+-- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
+--=================================================================
+
+-- تسجيل القائمة الرئيسية (DRIVE Panel)
+pcall(function()
+    ui.registerOnlineExtra("DRIVE Panel", function()
+        -- هذا الكود يتنفذ لما اللاعب يضغط على الزر في قائمة الأونلاين
+        panelOpen = not panelOpen 
+    end)
+end)
+
+-- تسجيل الشات (DRIVE Chat) كزر إضافي (اختياري)
+pcall(function()
+    ui.registerOnlineExtra("DRIVE Chat", function()
+        -- يفتح ويقفل الشات عند الضغط عليه
+        DriveChat.toggle()
+    end)
+end)
