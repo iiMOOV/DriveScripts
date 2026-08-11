@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.4", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2043,13 +2043,16 @@ local __dcOk, DriveChat = pcall(function()
   local function clanFetchEmojis()
     if RANKS_URL == "" then return end
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local nm = myName()
+    local url = base .. '/drive/clan/emojis'
+    if nm ~= "" then url = url .. '?name=' .. urlEncode(nm) end
     pcall(function()
-      web.get(base .. '/drive/clan/emojis', function(err, resp)
+      web.get(url, function(err, resp)
         if not err and resp and resp.body then
           pcall(function()
             local d = JSON.parse(resp.body)
             if d and d.ok and S.browser and S.ready then
-              jsend('dcClanEmojis', { takenIdx = d.takenIdx or {} })
+              jsend('dcClanEmojis', { takenIdx = d.takenIdx or {}, unlockedSlots = d.unlockedSlots, perRow = d.perRow })
             end
           end)
         end
@@ -2415,6 +2418,12 @@ local __dcOk, DriveChat = pcall(function()
     ui.drawCircle(vec2(cx, cy), r, rgbm(1, 1, 1, 0.18), 30, 1.5)
     dwBox2(initials(m.name), r * 0.92, cx - r, cy - r, r * 2, r * 2, CW)
   end
+  -- هل هذا الاسم حساب مربوط؟ (له بيانات ديسكورد في الرتب)
+  local function isLinked(name)
+    if not name or name == "" then return false end
+    local r = S.ranks[name]
+    return r ~= nil and r.discord ~= nil and r.discord ~= false
+  end
   local function bubbleInner(m, areaW)
     if m.sticker then return 96, 96 end
     local maxInner = math.floor((areaW - AVR * 2 - 44) * 0.94)
@@ -2450,6 +2459,13 @@ local __dcOk, DriveChat = pcall(function()
       drawAvatar(x + AVR + 2, avcy, AVR, m)
       local nameX = x + AVR * 2 + 12
       dwLeft2(dispName, 14, nameX, yy, 240, 18, nameCol)
+      -- شارة "حساب مربوط" بجانب اسم المرسِل (يشوفها الآخرون)
+      if not m.srv and isLinked(m.name) then
+        local nmW = math.min(240, math.ceil(ui.measureDWriteText(dispName, 14, 400).x) + 4)
+        local bx = nameX + nmW + 5
+        ui.drawRectFilled(vec2(bx, yy + 2), vec2(bx + 15, yy + 16), rgbm(0.13, 0.6, 0.4, 0.9 * a), 4)
+        ui.setCursor(vec2(bx, yy + 1)); ui.dwriteTextAligned("✓", 11, ui.Alignment.Center, ui.Alignment.Center, vec2(15, 15), false, rgbm(1, 1, 1, a))
+      end
       bx1 = nameX; bx2 = bx1 + bubW
       ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), m.srv and rgbm(0.11, 0.115, 0.14, 0.96 * a) or rgbm(0.17, 0.17, 0.19, 0.96 * a), 12)
       if m.srv then ui.drawRectFilled(vec2(bx1, bubY + 4), vec2(bx1 + 3, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * a), 2) end
@@ -2473,8 +2489,11 @@ local __dcOk, DriveChat = pcall(function()
     if not cStor.dc_notif then return end   -- إشعارات الفقاعات معطّلة من زر 🔔
     if S.open then return end
     local recent = {}
-    for i = #S.log, math.max(1, #S.log - 6), -1 do
-      if S.clock - S.log[i].t < 16 then table.insert(recent, 1, S.log[i]) end
+    for i = #S.log, math.max(1, #S.log - 12), -1 do
+      local lm = S.log[i]
+      -- تخطّى رسائلي أنا (المرسِل ما يشوف فقاعة رسالته)، واعرض فقط آخر 16 ثانية
+      if not lm.mine and (S.clock - lm.t < 16) then table.insert(recent, 1, lm) end
+      if #recent >= 6 then break end
     end
     if #recent == 0 then return end
     local w = 620
@@ -3169,7 +3188,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.4 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.5 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
