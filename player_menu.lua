@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.1", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2030,7 +2030,7 @@ local __dcOk, DriveChat = pcall(function()
           pcall(function()
             local d = JSON.parse(resp.body)
             if d and d.ok and S.browser and S.ready then
-              jsend('dcClanMine', { clan = d.clan or false, isOwner = d.isOwner or false, invites = d.invites or {} })
+              jsend('dcClanMine', { clan = d.clan or false, isOwner = d.isOwner or false, invites = d.invites or {}, canCreate = (d.canCreate == true) })
             end
           end)
         end
@@ -2049,7 +2049,7 @@ local __dcOk, DriveChat = pcall(function()
           pcall(function()
             local d = JSON.parse(resp.body)
             if d and d.ok and S.browser and S.ready then
-              jsend('dcClanEmojis', { all = d.all or {}, taken = d.taken or {} })
+              jsend('dcClanEmojis', { takenIdx = d.takenIdx or {} })
             end
           end)
         end
@@ -2200,7 +2200,7 @@ local __dcOk, DriveChat = pcall(function()
     if data:sub(1, 11) == 'clanemojis:' then clanFetchEmojis(); return end
     if data:sub(1, 11) == 'clancreate:' then
       local ok, obj = pcall(function() return JSON.parse(data:sub(12)) end)
-      if ok and obj then clanPost('/drive/clan/create', { clanName = obj.clanName, tag = obj.tag, color = obj.color }, 'تم إنشاء الكلان 🛡️') end
+      if ok and obj then clanPost('/drive/clan/create', { clanName = obj.clanName, tag = obj.tag, color = obj.color, emojiIdx = obj.emojiIdx }, 'تم إنشاء الكلان') end
       return
     end
     if data:sub(1, 11) == 'claninvite:' then clanPost('/drive/clan/invite', { targetName = data:sub(12) }, 'تم إرسال الدعوة 📩'); return end
@@ -2215,7 +2215,7 @@ local __dcOk, DriveChat = pcall(function()
     end
     if data:sub(1, 9) == 'clanedit:' then
       local ok, obj = pcall(function() return JSON.parse(data:sub(10)) end)
-      if ok and obj then clanPost('/drive/clan/edit', { desc = obj.desc, color = obj.color }, 'تم الحفظ ✓') end
+      if ok and obj then clanPost('/drive/clan/edit', { desc = obj.desc, color = obj.color, emojiIdx = obj.emojiIdx }, 'تم الحفظ') end
       return
     end
     if data:sub(1, 6) == 'notif:' then cStor.dc_notif = (data:sub(7) == '1'); return end
@@ -2248,21 +2248,32 @@ local __dcOk, DriveChat = pcall(function()
   -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء، فعشان محتوى الـ HTML
   -- يملأ النافذة فعلياً عند التكبير/التصغير، نعيد إنشاءه بالحجم الجديد.
   local WebBrowser = require('shared/web/browser')
-  local function makeBrowser(w, h)
+  local function makeBrowser(w, h, isPending)
     local b = WebBrowser({ size = vec2(math.floor(w), math.floor(h)), backgroundColor = rgbm(0, 0, 0, 0) })
     b:navigate(CHAT_URL)
-    b:onReceive('Drivechat', function(self, data)
-      if type(data) == 'string' then handleRaw(data) end
-    end)
-    b:onTitleChange(function(self, title) handleTitle(title) end)
+    if isPending then
+      -- المتصفح البديل (وقت التحجيم): نراقب جاهزيته فقط عشان نبدّله
+      b:onReceive('Drivechat', function(self, data)
+        if type(data) == 'string' and (data == 'ready' or data:find('ready')) then S.pendingReady = true end
+      end)
+      b:onTitleChange(function(self, title)
+        if type(title) == 'string' and title:find('ready') then S.pendingReady = true end
+      end)
+    else
+      b:onReceive('Drivechat', function(self, data)
+        if type(data) == 'string' then handleRaw(data) end
+      end)
+      b:onTitleChange(function(self, title) handleTitle(title) end)
+    end
     return b
   end
   local function rebuildBrowser()
-    -- نعيد بناء المتصفح بحجم النافذة الحالي — الصفحة ترجع تحمّل بالحجم الصح
-    S.ready = false
-    S.jsMode = false
-    pcall(function() S.browser = makeBrowser(S.W, S.H) end)
-    S.lastNav = S.clock
+    -- نبني متصفح جديد بالحجم الصح بالخلفية ونستمر نرسم القديم لين يجهز (بدون شاشة سوداء)
+    pcall(function()
+      S.pendingReady = false
+      S.pendingBrowser = makeBrowser(S.W, S.H, true)
+      S.pendingSince = S.clock
+    end)
   end
   pcall(function()
     S.browser = makeBrowser(S.W, S.H)
@@ -2381,6 +2392,10 @@ local __dcOk, DriveChat = pcall(function()
       return
     end
     local av = m.avatar
+    if (not av or av == "" or av == false) and m.name then
+      local rr = S.ranks[m.name]
+      if rr and rr.avatar and rr.avatar ~= "" then av = rr.avatar; m.avatar = av end
+    end
     if av and av ~= "" and av ~= false then
       if ui.isImageReady(av) then
         local ok = pcall(function()
@@ -2661,6 +2676,25 @@ local __dcOk, DriveChat = pcall(function()
         else
           S.dragging = false
           cStor.dc_posX = S.pos.x; cStor.dc_posY = S.pos.y
+        end
+      end
+
+      -- بدّل المتصفح البديل (بعد التحجيم) أول ما يجهز — بدون شاشة سوداء
+      if S.pendingBrowser then
+        local timedout = (S.clock - (S.pendingSince or 0)) > 4
+        if S.pendingReady or timedout then
+          pcall(function()
+            S.pendingBrowser:onReceive('Drivechat', function(self, data)
+              if type(data) == 'string' then handleRaw(data) end
+            end)
+            S.pendingBrowser:onTitleChange(function(self, title) handleTitle(title) end)
+          end)
+          S.browser = S.pendingBrowser
+          S.pendingBrowser = nil
+          S.ready = false; S.initSent = false; S.jsMode = false
+          S.lastNav = S.clock
+        else
+          pcall(function() S.pendingBrowser:draw(vec2(-9999, -9999), vec2(S.W, S.H), true) end)
         end
       end
 
@@ -3135,7 +3169,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.1 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.3 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
