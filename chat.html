@@ -216,7 +216,7 @@ body{display:flex;align-items:center;justify-content:center}
   <!-- PROFILE POPUP -->
   <div class="ovl" id="profovl" onclick="if(event.target===this)closeProfile()">
     <div class="card">
-      <div class="chead"><button class="cx" onmousedown="closeProfile();return false;" onclick="closeProfile()">✕</button><div class="cav" id="profav"></div></div>
+      <div class="chead"><button class="cx" onclick="closeProfile()">✕</button><div class="cav" id="profav"></div></div>
       <div class="cbody">
         <div class="cname" id="profname"></div>
         <div style="height:8px"></div>
@@ -268,7 +268,7 @@ body{display:flex;align-items:center;justify-content:center}
   <!-- نافذة الكلان: تفاصيل + إدارة -->
   <div class="ovl" id="clanovl" onclick="if(event.target===this)closeClan()">
     <div class="card">
-      <div class="chead" id="clanhead"><button class="cx" onmousedown="closeClan();return false;" onclick="closeClan()">✕</button>
+      <div class="chead" id="clanhead"><button class="cx" onclick="closeClan()">✕</button>
         <div id="clantitle" style="display:flex;align-items:center;height:100%;padding:0 18px;font-weight:900;font-size:18px;color:#fff"></div>
       </div>
       <div class="cbody" id="clanbody" style="padding-top:14px"></div>
