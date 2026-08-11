@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.7", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2261,23 +2261,41 @@ local __dcOk, DriveChat = pcall(function()
   -- ===== إنشاء المتصفح (دالة قابلة لإعادة الاستخدام) =====
   -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء، فعشان محتوى الـ HTML
   -- يملأ النافذة فعلياً عند التكبير/التصغير، نعيد إنشاءه بالحجم الجديد.
-  local WebBrowser = require('shared/web/browser')
+  -- CSP 0.3.0 غيّر طبقة الويب (CEF)؛ نحمّل المتصفح بأمان — لو فشل ما ينهار السكربت كله
+  -- نجرّب أكثر من مسار للموديول (تحسّباً لتغيّر المسار في 0.3.0)
+  local WebBrowser = nil
+  do
+    local paths = { 'shared/web/browser', 'shared/webbrowser', 'shared/web/webview', 'web/browser' }
+    for _, p in ipairs(paths) do
+      local ok, mod = pcall(require, p)
+      if ok and type(mod) ~= 'nil' then
+        WebBrowser = mod
+        ac.log('[DRIVE CHAT] WebBrowser loaded from: ' .. p)
+        break
+      end
+    end
+    if not WebBrowser then
+      ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths (CSP 0.3.0?) — chat browser disabled')
+    end
+  end
   local function makeBrowser(w, h, isPending)
-    local b = WebBrowser({ size = vec2(math.floor(w), math.floor(h)), backgroundColor = rgbm(0, 0, 0, 0) })
-    b:navigate(CHAT_URL)
+    if not WebBrowser then return nil end
+    local okB, b = pcall(function() return WebBrowser({ size = vec2(math.floor(w), math.floor(h)), backgroundColor = rgbm(0, 0, 0, 0) }) end)
+    if not okB or not b then ac.log('[DRIVE CHAT] WebBrowser create FAILED: ' .. tostring(b)); return nil end
+    pcall(function() b:navigate(CHAT_URL) end)
     if isPending then
       -- المتصفح البديل (وقت التحجيم): نراقب جاهزيته فقط عشان نبدّله
-      b:onReceive('Drivechat', function(self, data)
+      pcall(function() b:onReceive('Drivechat', function(self, data)
         if type(data) == 'string' and (data == 'ready' or data:find('ready')) then S.pendingReady = true end
-      end)
-      b:onTitleChange(function(self, title)
+      end) end)
+      pcall(function() b:onTitleChange(function(self, title)
         if type(title) == 'string' and title:find('ready') then S.pendingReady = true end
-      end)
+      end) end)
     else
-      b:onReceive('Drivechat', function(self, data)
+      pcall(function() b:onReceive('Drivechat', function(self, data)
         if type(data) == 'string' then handleRaw(data) end
-      end)
-      b:onTitleChange(function(self, title) handleTitle(title) end)
+      end) end)
+      pcall(function() b:onTitleChange(function(self, title) handleTitle(title) end) end)
     end
     return b
   end
@@ -3203,7 +3221,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.6 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.7 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
