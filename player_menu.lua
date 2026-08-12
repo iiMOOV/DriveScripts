@@ -2706,14 +2706,8 @@ local __dcOk, DriveChat = pcall(function()
     pcall(function() drawChatLog(sim) end)
 
     -- نافذة الشات (الشات مفتوح)
-    if S.open and not S.browser then S.open = false; S.wantsKbd = false end
+        if S.open and not S.browser then S.open = false; S.wantsKbd = false end
     if S.open and S.browser then
-      if not S.sizeLoaded then
-        S.sizeLoaded = true
-        if (cStor.dc_w or 0) >= 480 and (cStor.dc_h or 0) >= 360 then
-          S.W = cStor.dc_w; S.H = cStor.dc_h
-        end
-      end
       if not S.pos then
         if cStor.dc_posX >= 0 and cStor.dc_posY >= 0 then
           S.pos = vec2(cStor.dc_posX, cStor.dc_posY)
@@ -2728,10 +2722,7 @@ local __dcOk, DriveChat = pcall(function()
       local cmp = ui.mousePos()
       local clp = cmp - S.pos
       local cClicked = ui.mouseClicked(ui.MouseButton.Left)
-      -- منطقة السحب من الهيدر — نسبية للحجم (عشان ما تتغير مع التكبير/التصغير)
-      local hdrH = S.H * (60 / 620)          -- ارتفاع الهيدر النسبي
-      local btnZone = S.W * (300 / 920)      -- يسار الهيدر فيه أزرار التحكم — نستثنيها
-      if cClicked and not S.dragging and inRect2(clp, vec2(btnZone, 0), vec2(S.W, hdrH)) then
+      if cClicked and not S.dragging and inRect2(clp, vec2(300, 0), vec2(S.W, 60)) then
         S.dragging = true; S.dragOff = clp:clone()
       end
       if S.dragging then
@@ -2745,27 +2736,6 @@ local __dcOk, DriveChat = pcall(function()
         end
       end
 
-      -- بدّل المتصفح البديل (بعد التحجيم) أول ما يجهز — بدون شاشة سوداء
-      if S.pendingBrowser then
-        local timedout = (S.clock - (S.pendingSince or 0)) > 4
-        if S.pendingReady or timedout then
-          pcall(function()
-            S.pendingBrowser:onReceive('Drivechat', function(self, data)
-              if type(data) == 'string' then handleRaw(data) end
-            end)
-            S.pendingBrowser:onTitleChange(function(self, title) handleTitle(title) end)
-          end)
-          S.browser = S.pendingBrowser
-          S.pendingBrowser = nil
-          S.ready = false; S.initSent = false; S.jsMode = false
-          S.lastNav = S.clock
-        else
-          pcall(function() S.pendingBrowser:draw(vec2(-9999, -9999), vec2(S.W, S.H), true) end)
-        end
-      end
-
-      -- ===== التحجيم: نفس نظام المنيو [28] بالحرف =====
-      -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
         if not S.dragging then
@@ -2775,6 +2745,8 @@ local __dcOk, DriveChat = pcall(function()
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
+          -- التقاط الكيبورد كامل طول ما نافذة الشات مفتوحة (نفس أسلوب IDDL المجرّب)
+          -- يوصل الكتابة للصفحة ويمنع كيبيندات السكربتات الثانية (حماية ReplayManager)
           local kb = ui.captureKeyboard(true, true)
           if kb then S.browser:keyboard(kb) end
         end
