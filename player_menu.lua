@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v7.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2163,6 +2163,9 @@ local __dcOk, DriveChat = pcall(function()
 
   -- ===== أوامر الصفحة (JS -> Lua) =====
   local function handleData(data)
+    -- أي رسالة توصل من الصفحة = دليل حقيقي إنها حية (أوثق من انتظار رد sendAsync
+    -- اللي قد ما يشتغل صح مع CEF الجديد بـ CSP 0.3.0 ويسبب إعادة تحميل كل 60 ثانية بالغلط)
+    S.lastOk = S.clock
     if data == 'ready' then markReady(); return end
     if data == 'ack' then S.acked = true; return end
     -- مزامنة الرسائل: الصفحة ترسل أعلى id عندها، ونعيد دفع أي رسالة أحدث (استرجاع المفقود)
@@ -2269,8 +2272,8 @@ local __dcOk, DriveChat = pcall(function()
   end
 
   -- ===== إنشاء المتصفح (دالة قابلة لإعادة الاستخدام) =====
-  -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء، فعشان محتوى الـ HTML
-  -- يملأ النافذة فعلياً عند التكبير/التصغير، نعيد إنشاءه بالحجم الجديد.
+  -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء — عشان كذا ننشئه مرة وحدة
+  -- بدقة ثابتة (BROWSER_RES) ونرسمه متكيّف؛ ما نعيد بناءه عند التحجيم (v6.8+).
   -- CSP 0.3.0 غيّر طبقة الويب (CEF)؛ نحمّل المتصفح بأمان — لو فشل ما ينهار السكربت كله
   -- نجرّب أكثر من مسار للموديول (تحسّباً لتغيّر المسار في 0.3.0)
   local WebBrowser = nil
@@ -2765,7 +2768,7 @@ local __dcOk, DriveChat = pcall(function()
       -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
       local GRIP = 26
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
-        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)   -- المتصفح بنفس حجم النافذة (يُعاد بناؤه عند التحجيم)
+        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)   -- نرسم سطح المتصفح الثابت (BROWSER_RES) متكيّف لحجم النافذة الحالي
         local mlp = ui.mouseLocalPos()
 
         -- تحجيم من الزاوية السفلية اليمنى — نفس منطق drawMenuHost بالضبط
@@ -2880,6 +2883,8 @@ end)
 if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
+else
+  ac.log("[DRIVE CHAT] v7.0 loaded OK — lastOk from real inbound msgs (fixes false 60s reload)")
 end
 
 --=================================================================
@@ -3232,7 +3237,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.8 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v7.0 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
