@@ -595,8 +595,10 @@ function openClanPanel(){ CLAN_PICK_COLOR='#F7820E';
   sendToLua('clanemojis:');
   renderClan();
   // احتياط: لو ضاع رد clanmine نعيد الطلب
-  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')) sendToLua('clanmine:'); }, 1500);
-  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')) sendToLua('clanmine:'); }, 3500);
+  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')) sendToLua('clanmine:'); }, 1200);
+  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')) sendToLua('clanmine:'); }, 2800);
+  // آخر محاولة: لو ما جا رد نهائياً، نوقف الدوران ونعرض المحتوى (ما نعلّق على "جاري التحميل")
+  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')){ MY_CLAN_LOADED=true; renderClan(); } }, 5000);
 }
 function openClanDetails(name){
   CLAN_VIEW={loading:true,name:name};
@@ -605,8 +607,10 @@ function openClanDetails(name){
   renderClan();
   // احتياط: لو ضاع الرد، نعيد الطلب لين يجي
   const want=name;
-  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want) sendToLua('clandetails:'+want); }, 1800);
-  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want) sendToLua('clandetails:'+want); }, 4000);
+  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want) sendToLua('clandetails:'+want); }, 1500);
+  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want) sendToLua('clandetails:'+want); }, 3000);
+  // آخر محاولة: لو ما جا رد، نعرض رسالة بدل الدوران الأبدي
+  setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want){ CLAN_VIEW={loading:false,name:want,owner:'؟',members:[],count:0,failed:true}; renderClan(); toast('تعذّر جلب بيانات الكلان — حاول ثانية'); } }, 6000);
 }
 function closeClan(){ document.getElementById('clanovl').classList.remove('show'); CLAN_VIEW=null; CLAN_SCREEN='main'; }
 
@@ -1003,6 +1007,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
+window.CHAT_VERSION='v7.0'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>
