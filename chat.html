@@ -586,14 +586,17 @@ function phr(t){addMessage(myMsg({text:t}));sendToLua('send:'+t);togglePanel('ph
 const CLAN_EMOJIS_ALL=['🛡️','⚔️','🔥','⚡','🎯','🏁','🐺','🦅','🦁','🐉','🐍','🦈','🚀','☠️','🌪️','❄️','🧨','🎲','🦂','🐻','🦖','🎖️','🀄','🌟','⭐','🔱','💠','👑','💎','🏆'];
 let CLAN_EMOJI_SLOTS=6, CLAN_EMOJI_PERROW=6;   // كم إيموجي مفتوح (يجي من dcClanEmojis)
 let CLAN_PICK_COLOR='#F7820E';   // اللون المختار حالياً (create/edit)
-let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️', MY_CAN_CREATE=true;
+let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SCREEN='main', CLAN_EMOJIS_TAKEN=[], CLAN_PICK_EMOJI='🛡️', MY_CAN_CREATE=true, MY_CLAN_LOADED=false, MY_IS_COLEADER=false;
 
 function openClanPanel(){ CLAN_PICK_COLOR='#F7820E';
-  CLAN_VIEW=null; CLAN_SCREEN='main';
+  CLAN_VIEW=null; CLAN_SCREEN='main'; MY_CLAN_LOADED=false;
   document.getElementById('clanovl').classList.add('show');
   sendToLua('clanmine:');
   sendToLua('clanemojis:');
   renderClan();
+  // احتياط: لو ضاع رد clanmine نعيد الطلب
+  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')) sendToLua('clanmine:'); }, 1500);
+  setTimeout(()=>{ if(!MY_CLAN_LOADED&&document.getElementById('clanovl').classList.contains('show')) sendToLua('clanmine:'); }, 3500);
 }
 function openClanDetails(name){
   CLAN_VIEW={loading:true,name:name};
@@ -654,16 +657,28 @@ function clanStat(icon,label,val,col){
 function clanMemberRow(mm,col,showActions){
   const initial=(mm.name||'؟').trim().charAt(0).toUpperCase();
   const lv=mm.level!=null?`<span style="font-size:11px;color:var(--or1);font-weight:800">Lv.${mm.level}</span>`:'';
+  // شارة الرتبة داخل الكلان
+  const roleBadge = mm.isOwner
+    ? '<span style="font-size:10px;background:#F5C51822;color:#F5C518;border:1px solid #F5C51855;border-radius:20px;padding:1px 7px;font-weight:800">👑 قائد</span>'
+    : (mm.isCoLeader ? '<span style="font-size:10px;background:#3B82F622;color:#3B82F6;border:1px solid #3B82F655;border-radius:20px;padding:1px 7px;font-weight:800">🛡️ مساعد</span>' : '');
   let act='';
   if(showActions&&!mm.isOwner){
-    act=`<span style="display:flex;gap:4px">
-      <button class="cbtn" style="padding:4px 8px;font-size:12px" title="نقل الملكية" onclick="clanAskTransfer('${esc(mm.name)}')">👑</button>
-      <button class="cbtn" style="padding:4px 8px;font-size:12px;background:#B4231C;color:#fff" title="طرد" onclick="clanAskKick('${esc(mm.name)}')">✕</button></span>`;
+    let btns='';
+    // المالك فقط: ترقية/تنزيل قائد مساعد + نقل الملكية
+    if(MY_IS_OWNER){
+      if(mm.isCoLeader) btns+=`<button class="cbtn" style="padding:4px 8px;font-size:12px" title="تنزيل من مساعد" onclick="clanDemote('${esc(mm.name)}')">⬇️</button>`;
+      else btns+=`<button class="cbtn" style="padding:4px 8px;font-size:12px" title="ترقية لمساعد" onclick="clanPromote('${esc(mm.name)}')">⬆️</button>`;
+      btns+=`<button class="cbtn" style="padding:4px 8px;font-size:12px" title="نقل الملكية" onclick="clanAskTransfer('${esc(mm.name)}')">👑</button>`;
+    }
+    // المالك أو المساعد يقدر يطرد — بس المساعد ما يطرد مساعد ثاني
+    const canKick = MY_IS_OWNER || (MY_IS_COLEADER && !mm.isCoLeader);
+    if(canKick) btns+=`<button class="cbtn" style="padding:4px 8px;font-size:12px;background:#B4231C;color:#fff" title="طرد" onclick="clanAskKick('${esc(mm.name)}')">✕</button>`;
+    if(btns) act=`<span style="display:flex;gap:4px">${btns}</span>`;
   }
   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#17161e;border:1px solid #23212e;border-radius:10px">
     <span style="display:flex;align-items:center;gap:9px">
       <span style="width:30px;height:30px;border-radius:50%;background:${col}33;border:1.5px solid ${col};display:flex;align-items:center;justify-content:center;font-weight:900;color:${col};font-size:14px">${esc(initial)}</span>
-      <span style="display:flex;flex-direction:column"><span style="font-weight:700">${esc(mm.name)} ${mm.isOwner?'👑':''}</span>${lv}</span>
+      <span style="display:flex;flex-direction:column"><span style="font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${esc(mm.name)} ${roleBadge}</span>${lv}</span>
     </span>${act}</div>`;
 }
 
@@ -740,6 +755,12 @@ function renderClan(){
     return;
   }
 
+  // ما وصلت بيانات كلاني بعد → نعرض تحميل (بدل ما نفترض إنك بدون كلان ونطلع نموذج الإنشاء غلط)
+  if(!MY_CLAN_LOADED){
+    title.innerHTML='🛡️ الكلانات';
+    body.innerHTML='<div class="csub" style="text-align:center;padding:34px">جاري التحميل...</div>';
+    return;
+  }
   // ===== لا يوجد كلان: دعوات + إنشاء =====
   if(!MY_CLAN){
     title.innerHTML='🛡️ الكلانات';
@@ -796,14 +817,20 @@ function renderClan(){
   h+=`<div class="crow"><span class="cl">📅 أُنشئ</span><span class="cv">${MY_CLAN.created?fmtDate(MY_CLAN.created):'—'}</span></div>`;
   if(MY_CLAN.desc) h+=`<div style="margin:10px 0"><div class="cl" style="font-size:12px;margin-bottom:4px">📝 الوصف</div><div style="background:#17161e;border:1px solid #23212e;border-radius:10px;padding:9px;white-space:normal;font-weight:400;font-size:13px">${esc(MY_CLAN.desc)}</div></div>`;
   h+=`<div class="cl" style="font-size:12px;margin:10px 0 6px">👥 الأعضاء (${MY_CLAN.count||0})</div><div style="display:flex;flex-direction:column;gap:5px">`;
-  (MY_CLAN.members||[]).forEach(mm=>{ h+=clanMemberRow(mm,col,MY_IS_OWNER); });
+  (MY_CLAN.members||[]).forEach(mm=>{ h+=clanMemberRow(mm,col,(MY_IS_OWNER||MY_IS_COLEADER)); });
   h+='</div>';
   h+='<div class="cbtns" style="flex-wrap:wrap;gap:6px">';
-  if(MY_IS_OWNER){
+  // دعوة: المالك أو القائد المساعد
+  if(MY_IS_OWNER||MY_IS_COLEADER){
     h+=`<button class="cbtn pri" onclick="clanGoInvite()">➕ دعوة</button>`;
+  }
+  // تعديل/حذف: المالك فقط
+  if(MY_IS_OWNER){
     h+=`<button class="cbtn" onclick="clanGoEdit()">✏️ تعديل</button>`;
     h+=`<button class="cbtn" style="background:#B4231C;color:#fff" onclick="clanAskDelete()">🗑️ حذف</button>`;
-  } else {
+  }
+  // مغادرة: أي عضو ليس المالك (القائد المساعد يقدر يغادر)
+  if(!MY_IS_OWNER){
     h+=`<button class="cbtn" style="background:#B4231C;color:#fff" onclick="clanAskLeave()">🚪 مغادرة</button>`;
   }
   h+=`<button class="cbtn" onclick="closeClan()">إغلاق</button></div>`;
@@ -893,6 +920,8 @@ function clanAskKick(name){ clanConfirmBar('طرد <b>'+esc(name)+'</b> من ا�
 function clanAskTransfer(name){ clanConfirmBar('نقل ملكية الكلان لـ <b>'+esc(name)+'</b>؟',()=>{ sendToLua('clantransfer:'+name); toast('جاري النقل...'); }); }
 function clanAskLeave(){ clanConfirmBar('مغادرة الكلان؟',()=>{ sendToLua('clanleave:'); toast('جاري المغادرة...'); }); }
 function clanAskDelete(){ clanConfirmBar('حذف الكلان <b>نهائياً</b>؟ لا يمكن التراجع.',()=>{ sendToLua('clandelete:'); toast('جاري الحذف...'); }); }
+function clanPromote(name){ clanConfirmBar('ترقية <b>'+esc(name)+'</b> لقائد مساعد؟ (يقدر يدعو ويطرد)',()=>{ sendToLua('clanpromote:'+name); toast('جاري الترقية...'); }); }
+function clanDemote(name){ clanConfirmBar('تنزيل <b>'+esc(name)+'</b> من قائد مساعد؟',()=>{ sendToLua('clandemote:'+name); toast('جاري التنزيل...'); }); }
 
 const HANDLERS = {
   dcMessage: (m)=>{ m=m||{}; addMessage({...m, text:(m.text===false?undefined:m.text), sticker:(m.sticker===false?undefined:m.sticker), avatar:(m.avatar===false?undefined:m.avatar), rankColor:(m.rankColor===false?undefined:m.rankColor)}); },
@@ -921,13 +950,13 @@ const HANDLERS = {
     else if(d.reason==='target_not_linked'){ toast('هذا اللاعب غير مربوط بالديسكورد'); }
     else { toast('تعذّر تسجيل اللايك'); }
   },
-  dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_CLAN_INVITES=d.invites||[]; MY_CAN_CREATE=(d.canCreate!==false); if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
+  dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_IS_COLEADER=!!d.isCoLeader; MY_CLAN_INVITES=d.invites||[]; MY_CAN_CREATE=(d.canCreate!==false); MY_CLAN_LOADED=true; if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
   dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(d.unlockedSlots) CLAN_EMOJI_SLOTS=d.unlockedSlots; if(d.perRow) CLAN_EMOJI_PERROW=d.perRow; if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find((e,i)=>i<CLAN_EMOJI_SLOTS&&!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
     if(d.ok){ toast(d.msg||'تم ✓'); CLAN_SCREEN='main'; sendToLua('clanmine:'); sendToLua('clanemojis:'); }
     else {
-      const R={bad_args:'بيانات ناقصة',not_linked:'اربط حسابك أول',already_in_clan:'أنت في كلان بالفعل',no_permission:'ما عندك صلاحية إنشاء كلان',bad_name:'اسم غير صالح (2-20)',bad_tag:'تاق غير صالح (2-5)',name_taken:'الاسم محجوز',not_in_clan:'ما عندك كلان',not_owner:'المالك فقط يقدر',target_not_linked:'اللاعب غير مربوط',target_has_clan:'اللاعب عنده كلان',full:'الكلان ممتلئ',already_invited:'تمت دعوته من قبل',no_invite:'لا توجد دعوة',not_member:'ليس عضواً',cant_kick_self:'ما تقدر تطرد نفسك',owner_must_transfer:'انقل الملكية أول',target_not_member:'ليس عضواً في كلانك',no_clan:'الكلان غير موجود',color_locked:'اللون الحر يُفتح بمستوى 8',emoji_locked:'هذا الإيموجي يُفتح بمستوى أعلى'};
+      const R={bad_args:'بيانات ناقصة',not_linked:'اربط حسابك أول',already_in_clan:'أنت في كلان بالفعل',no_permission:'ما عندك صلاحية إنشاء كلان',bad_name:'اسم غير صالح (2-20)',bad_tag:'تاق غير صالح (2-5)',name_taken:'الاسم محجوز',not_in_clan:'ما عندك كلان',not_owner:'المالك فقط يقدر',target_not_linked:'اللاعب غير مربوط',target_has_clan:'اللاعب عنده كلان',full:'الكلان ممتلئ',already_invited:'تمت دعوته من قبل',no_invite:'لا توجد دعوة',not_member:'ليس عضواً',cant_kick_self:'ما تقدر تطرد نفسك',owner_must_transfer:'انقل الملكية أول',target_not_member:'ليس عضواً في كلانك',no_clan:'الكلان غير موجود',color_locked:'اللون الحر يُفتح بمستوى 8',emoji_locked:'هذا الإيموجي يُفتح بمستوى أعلى',cant_kick_leader:'ما تقدر تطرد قائد',already_coleader:'هو أصلاً قائد مساعد',not_coleader:'ليس قائد مساعد'};
       toast(R[d.reason]||'تعذّرت العملية');
     }
   },
