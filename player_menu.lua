@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v6.7", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v6.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1798,6 +1798,8 @@ local __dcOk, DriveChat = pcall(function()
   local NOOP = function() end
 
   local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_opacity = 1.0, dc_logX = 16, dc_logY = -1, dc_w = 0, dc_h = 0 }
+  -- دقة ثابتة للمتصفح (نرسمه متكيّف لأي حجم نافذة) — يمنع إعادة البناء عند التحجيم
+  local BROWSER_RES_W, BROWSER_RES_H = 1280, 860
 
   -- ===== الستيكرز / GIF =====
   -- نفس القائمة عند كل العملاء — نرسل رقم فقط ($STICK:N) لأن روابط GIF أطول من حد رسائل AC.
@@ -1828,6 +1830,7 @@ local __dcOk, DriveChat = pcall(function()
     open = false, wantsKbd = false,
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
+    -- BROWSER_RES ثابت: ننشئ المتصفح مرة وحدة بهالدقة العالية ونرسمه متكيّف (بدون إعادة بناء عند التحجيم)
     sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), szRight = 0, sizeLoaded = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {}, msgId = 0,
     seen = {}, jsMode = false, acked = false, readyAt = 0,
@@ -2016,8 +2019,8 @@ local __dcOk, DriveChat = pcall(function()
         if S.browser and S.ready then
           jsend('dcClanAck', { ok = ok and true or false, reason = reason or false, msg = okMsg or false })
         end
-        -- بعد أي عملية، حدّث حالة كلاني
-        if ok then clanFetchMine() end
+        -- بعد أي عملية، حدّث حالة كلاني + أجبر تحديث الرتب فوراً (بدل انتظار الدورة)
+        if ok then clanFetchMine(); S.lastRanks = 0 end
       end)
     end)
   end
@@ -2033,7 +2036,7 @@ local __dcOk, DriveChat = pcall(function()
           pcall(function()
             local d = JSON.parse(resp.body)
             if d and d.ok and S.browser and S.ready then
-              jsend('dcClanMine', { clan = d.clan or false, isOwner = d.isOwner or false, invites = d.invites or {}, canCreate = (d.canCreate == true) })
+              jsend('dcClanMine', { clan = d.clan or false, isOwner = d.isOwner or false, isCoLeader = (d.isCoLeader == true), invites = d.invites or {}, canCreate = (d.canCreate == true) })
             end
           end)
         end
@@ -2099,6 +2102,7 @@ local __dcOk, DriveChat = pcall(function()
         if S.browser and S.ready then
           jsend('dcDescAck', { ok = ok and true or false, desc = desc, hasDesc = hasDesc })
         end
+        if ok then S.lastRanks = 0 end   -- تحديث فوري (بدل انتظار الدورة)
       end)
     end)
   end
@@ -2220,6 +2224,12 @@ local __dcOk, DriveChat = pcall(function()
     if data:sub(1, 11) == 'claninvite:' then clanPost('/drive/clan/invite', { targetName = data:sub(12) }, 'تم إرسال الدعوة 📩'); return end
     if data:sub(1, 9) == 'clankick:' then clanPost('/drive/clan/kick', { targetName = data:sub(10) }, 'تم الطرد'); return end
     if data:sub(1, 13) == 'clantransfer:' then clanPost('/drive/clan/transfer', { targetName = data:sub(14) }, 'تم نقل الملكية 👑'); return end
+    if data:sub(1, 12) == 'clanpromote:' then
+      clanPost('/drive/clan/coleader', { targetName = data:sub(13), promote = true }, 'تمت الترقية لقائد مساعد ⬆️'); return
+    end
+    if data:sub(1, 11) == 'clandemote:' then
+      clanPost('/drive/clan/coleader', { targetName = data:sub(12), promote = false }, 'تم التنزيل ⬇️'); return
+    end
     if data:sub(1, 10) == 'clanleave:' then clanPost('/drive/clan/leave', {}, 'غادرت الكلان'); return end
     if data:sub(1, 11) == 'clandelete:' then clanPost('/drive/clan/delete', {}, 'تم حذف الكلان'); return end
     if data:sub(1, 12) == 'clanrespond:' then
@@ -2280,7 +2290,8 @@ local __dcOk, DriveChat = pcall(function()
   end
   local function makeBrowser(w, h, isPending)
     if not WebBrowser then return nil end
-    local okB, b = pcall(function() return WebBrowser({ size = vec2(math.floor(w), math.floor(h)), backgroundColor = rgbm(0, 0, 0, 0) }) end)
+    -- ننشئ دائماً بالدقة الثابتة (نتجاهل w/h) ونرسمه متكيّف — فلا حاجة لإعادة البناء عند التحجيم
+    local okB, b = pcall(function() return WebBrowser({ size = vec2(BROWSER_RES_W, BROWSER_RES_H), backgroundColor = rgbm(0, 0, 0, 0) }) end)
     if not okB or not b then ac.log('[DRIVE CHAT] WebBrowser create FAILED: ' .. tostring(b)); return nil end
     pcall(function() b:navigate(CHAT_URL) end)
     if isPending then
@@ -2633,7 +2644,7 @@ local __dcOk, DriveChat = pcall(function()
     end
 
     -- الرتب / الربط من البوت (كل 30 ثانية)
-    if RANKS_URL ~= "" and (now - S.lastRanks) > 30 then
+    if RANKS_URL ~= "" and (now - S.lastRanks) > 10 then
       S.lastRanks = now
       fetchRanks()
     end
@@ -2652,7 +2663,7 @@ local __dcOk, DriveChat = pcall(function()
             if not S.joined[jk] then
               S.joined[jk] = now
               -- لاعب جديد دخل: نجدّد الرتب قريباً عشان تبان بياناته بسرعة (بدل انتظار 30ث)
-              if now - (S.lastRanks or 0) > 5 then S.lastRanks = now - 25 end
+              if now - (S.lastRanks or 0) > 3 then S.lastRanks = now - 10 end
             end
             seen[jk] = true
             local r = S.ranks[nm]
@@ -2770,7 +2781,7 @@ local __dcOk, DriveChat = pcall(function()
           else
             S.sizing = false
             cStor.dc_w = S.W; cStor.dc_h = S.H
-            rebuildBrowser()   -- أعد بناء المتصفح بالحجم الجديد عشان المحتوى يملأ النافذة
+            -- ما نعيد البناء: المتصفح بدقة ثابتة ويُرسم متكيّف، فالرسايل ما تختفي والحجم يتغيّر فوراً
           end
         end
 
@@ -3221,7 +3232,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v6.7 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v6.8 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
