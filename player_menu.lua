@@ -2768,23 +2768,13 @@ local __dcOk, DriveChat = pcall(function()
       -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
-        -- علامة التحجيم (زاوية سفلية يسرى)
-        do
-          local gy = S.H
-          for gi = 1, 3 do
-            local o = gi * 4
-            ui.drawLine(vec2(2, gy - o), vec2(o, gy - 2), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 1.5)
-          end
-        end
-        if not S.dragging and not S.sizing then
+        if not S.dragging then
           local uis = ac.getUI()
           local mlp = ui.mouseLocalPos()
           S.browser:mouseInput(vec2(mlp.x / S.W, mlp.y / S.H),
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
-          -- التقاط الكيبورد كامل طول ما نافذة الشات مفتوحة (نفس أسلوب IDDL المجرّب)
-          -- يوصل الكتابة للصفحة ويمنع كيبيندات السكربتات الثانية (حماية ReplayManager)
           local kb = ui.captureKeyboard(true, true)
           if kb then S.browser:keyboard(kb) end
         end
