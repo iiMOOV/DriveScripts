@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v7.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v7.1", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1797,9 +1797,10 @@ local __dcOk, DriveChat = pcall(function()
   local FONT = "Segoe UI;Weight=Bold"
   local NOOP = function() end
 
-
   local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_opacity = 1.0, dc_logX = 16, dc_logY = -1 }
-
+  -- حجم ثابت لنافذة الشات — بنفس فكرة IDDL: بدون تحجيم أبداً (فقط سحب/تحريك)، فيتجنّب كل مشاكل
+  -- إعادة البناء/فقدان الرسائل/عدم الاستجابة اللي يسببها تحجيم متصفح CSP
+  local CHAT_W, CHAT_H = 920, 620
 
   -- ===== الستيكرز / GIF =====
   -- نفس القائمة عند كل العملاء — نرسل رقم فقط ($STICK:N) لأن روابط GIF أطول من حد رسائل AC.
@@ -1829,9 +1830,7 @@ local __dcOk, DriveChat = pcall(function()
     browser = nil, ready = false, initSent = false,
     open = false, wantsKbd = false,
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
-    pos = nil, W = 920, H = 620, dragging = false, dragOff = vec2(0, 0), prevKey = false,
-    -- BROWSER_RES ثابت: ننشئ المتصفح مرة وحدة بهالدقة العالية ونرسمه متكيّف (بدون إعادة بناء عند التحجيم)
-    sizing = false, szStart = vec2(0, 0), szWH = vec2(0, 0), szRight = 0, sizeLoaded = false,
+    pos = nil, W = CHAT_W, H = CHAT_H, dragging = false, dragOff = vec2(0, 0), prevKey = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {}, msgId = 0,
     seen = {}, jsMode = false, acked = false, readyAt = 0,
     inputSaved = false, savedInput = nil,
@@ -2271,9 +2270,9 @@ local __dcOk, DriveChat = pcall(function()
     if payload then handleRaw(payload) end
   end
 
-  -- ===== إنشاء المتصفح (دالة قابلة لإعادة الاستخدام) =====
-  -- المتصفح في CSP لا يقبل تغيير حجمه بعد الإنشاء — عشان كذا ننشئه مرة وحدة
-  -- بدقة ثابتة (BROWSER_RES) ونرسمه متكيّف؛ ما نعيد بناءه عند التحجيم (v6.8+).
+  -- ===== إنشاء المتصفح =====
+  -- نفس نمط IDDL بالضبط: حجم ثابت (CHAT_W×CHAT_H) لا يتغيّر أبداً — بدون تحجيم، فقط سحب/تحريك.
+  -- هذا يتجنّب كل مشاكل تحجيم متصفح CSP (فقدان رسائل، عدم استجابة، إعادة تحميل).
   -- CSP 0.3.0 غيّر طبقة الويب (CEF)؛ نحمّل المتصفح بأمان — لو فشل ما ينهار السكربت كله
   -- نجرّب أكثر من مسار للموديول (تحسّباً لتغيّر المسار في 0.3.0)
   local WebBrowser = nil
@@ -2291,44 +2290,18 @@ local __dcOk, DriveChat = pcall(function()
       ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths (CSP 0.3.0?) — chat browser disabled')
     end
   end
-  local function makeBrowser(w, h, isPending)
-    if not WebBrowser then return nil end
-    -- ننشئ دائماً بالدقة الثابتة (نتجاهل w/h) ونرسمه متكيّف — فلا حاجة لإعادة البناء عند التحجيم
-    local okB, b = pcall(function() return WebBrowser({ size = vec2(BROWSER_RES_W, BROWSER_RES_H), backgroundColor = rgbm(0, 0, 0, 0) }) end)
-    if not okB or not b then ac.log('[DRIVE CHAT] WebBrowser create FAILED: ' .. tostring(b)); return nil end
-    pcall(function() b:navigate(CHAT_URL) end)
-    if isPending then
-      -- المتصفح البديل (وقت التحجيم): نراقب جاهزيته فقط عشان نبدّله
-      pcall(function() b:onReceive('Drivechat', function(self, data)
-        if type(data) == 'string' and (data == 'ready' or data:find('ready')) then S.pendingReady = true end
-      end) end)
-      pcall(function() b:onTitleChange(function(self, title)
-        if type(title) == 'string' and title:find('ready') then S.pendingReady = true end
-      end) end)
-    else
-      pcall(function() b:onReceive('Drivechat', function(self, data)
-        if type(data) == 'string' then handleRaw(data) end
-      end) end)
-      pcall(function() b:onTitleChange(function(self, title) handleTitle(title) end) end)
-    end
-    return b
-  end
-  local function rebuildBrowser()
-    -- نبني متصفح جديد بالحجم الصح بالخلفية ونستمر نرسم القديم لين يجهز (بدون شاشة سوداء)
+  -- ننشئ المتصفح مرة وحدة بحجم ثابت (نفس نمط IDDL بالحرف — pcall واحد، بدون رجوع/إعادة بناء)
+  if WebBrowser then
     pcall(function()
-      S.pendingReady = false
-      S.pendingBrowser = makeBrowser(S.W, S.H, true)
-      S.pendingSince = S.clock
+      S.browser = WebBrowser({ size = vec2(CHAT_W, CHAT_H), backgroundColor = rgbm(0, 0, 0, 0) })
+      S.lastNav = 0
+      S.browser:navigate(CHAT_URL)
+      S.browser:onReceive('Drivechat', function(self, data)
+        if type(data) == 'string' then handleRaw(data) end
+      end)
+      S.browser:onTitleChange(function(self, title) handleTitle(title) end)
     end)
   end
-  pcall(function()
-    local WebBrowser = require('shared/web/browser')
-    S.browser = WebBrowser({ size = vec2(S.W, S.H), backgroundColor = rgbm(0, 0, 0, 0) })
-    S.lastNav = 0
-    S.browser:navigate(CHAT_URL)
-    S.browser:onReceive('Drivechat', function(self, data)
-      if type(data) == 'string' then handleRaw(data) end
-  end)
 
   -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
   -- نستبدل رسم شات CSP برسمة فاضية شفافة بالكامل + نبلع الإدخال
@@ -2710,7 +2683,7 @@ local __dcOk, DriveChat = pcall(function()
     pcall(function() drawChatLog(sim) end)
 
     -- نافذة الشات (الشات مفتوح)
-        if S.open and not S.browser then S.open = false; S.wantsKbd = false end
+    if S.open and not S.browser then S.open = false; S.wantsKbd = false end
     if S.open and S.browser then
       if not S.pos then
         if cStor.dc_posX >= 0 and cStor.dc_posY >= 0 then
@@ -2722,10 +2695,11 @@ local __dcOk, DriveChat = pcall(function()
       S.pos.x = math.max(-S.W + 80, math.min(S.pos.x, sim.windowWidth - 80))
       S.pos.y = math.max(0, math.min(S.pos.y, sim.windowHeight - 60))
 
-      -- سحب من الهيدر (أعلى 60px — ما عدا يسار 300px عشان أزرار التحكم RTL)
+      -- ===== سحب فقط (بدون تحجيم) — نفس نمط IDDL بالحرف: حجم ثابت، الهيدر يسحب =====
       local cmp = ui.mousePos()
       local clp = cmp - S.pos
       local cClicked = ui.mouseClicked(ui.MouseButton.Left)
+      -- منطقة السحب من الهيدر (أعلى 60px — ما عدا يسار 300px عشان أزرار التحكم RTL)
       if cClicked and not S.dragging and inRect2(clp, vec2(300, 0), vec2(S.W, 60)) then
         S.dragging = true; S.dragOff = clp:clone()
       end
@@ -2740,7 +2714,7 @@ local __dcOk, DriveChat = pcall(function()
         end
       end
 
-      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
+      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
         if not S.dragging then
           local uis = ac.getUI()
@@ -2749,14 +2723,13 @@ local __dcOk, DriveChat = pcall(function()
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
-          -- التقاط الكيبورد كامل طول ما نافذة الشات مفتوحة (نفس أسلوب IDDL المجرّب)
-          -- يوصل الكتابة للصفحة ويمنع كيبيندات السكربتات الثانية (حماية ReplayManager)
+
           local kb = ui.captureKeyboard(true, true)
           if kb then S.browser:keyboard(kb) end
         end
       end)
 
-      -- كليك برا النافذة = قفل
+      -- كليك برا النافذة = قفل (ما نقفل وقت السحب)
       if cClicked and not S.dragging and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
         closeChat()
       end
@@ -2827,7 +2800,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v7.0 loaded OK — lastOk from real inbound msgs (fixes false 60s reload)")
+  ac.log("[DRIVE CHAT] v7.1 loaded OK — IDDL-style fixed-size chat (no resize, drag-only)")
 end
 
 --=================================================================
@@ -3180,7 +3153,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v7.0 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v7.1 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
