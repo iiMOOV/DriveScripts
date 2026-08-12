@@ -1797,9 +1797,9 @@ local __dcOk, DriveChat = pcall(function()
   local FONT = "Segoe UI;Weight=Bold"
   local NOOP = function() end
 
-  local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_opacity = 1.0, dc_logX = 16, dc_logY = -1, dc_w = 0, dc_h = 0 }
-  -- دقة ثابتة للمتصفح (نرسمه متكيّف لأي حجم نافذة) — يمنع إعادة البناء عند التحجيم
-  local BROWSER_RES_W, BROWSER_RES_H = 1280, 860
+
+  local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_opacity = 1.0, dc_logX = 16, dc_logY = -1 }
+
 
   -- ===== الستيكرز / GIF =====
   -- نفس القائمة عند كل العملاء — نرسل رقم فقط ($STICK:N) لأن روابط GIF أطول من حد رسائل AC.
@@ -2322,8 +2322,12 @@ local __dcOk, DriveChat = pcall(function()
     end)
   end
   pcall(function()
-    S.browser = makeBrowser(S.W, S.H)
+    local WebBrowser = require('shared/web/browser')
+    S.browser = WebBrowser({ size = vec2(S.W, S.H), backgroundColor = rgbm(0, 0, 0, 0) })
     S.lastNav = 0
+    S.browser:navigate(CHAT_URL)
+    S.browser:onReceive('Drivechat', function(self, data)
+      if type(data) == 'string' then handleRaw(data) end
   end)
 
   -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
