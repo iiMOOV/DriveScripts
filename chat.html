@@ -398,17 +398,27 @@ function renderMembers(){
   });
 }
 
+/* ---------- إشعار Lua بحالة النوافذ المنبثقة (بروفايل/كلان/إدارة) ----------
+   عشان Lua يتجنّب سحب النافذة كامل لما نضغط داخل هالنوافذ (المشكلة: زر X فيها
+   كان يقع داخل منطقة سحب الهيدر الأصلية فيبلعها Lua كسحب بدل ما توصل للزر) */
+function notifyOverlayState(){
+  const open = document.getElementById('profovl').classList.contains('show')
+    || document.getElementById('clanovl').classList.contains('show')
+    || document.getElementById('adminovl').classList.contains('show');
+  try{ sendToLua('ovl:'+(open?1:0)); }catch(e){}
+}
 /* ---------- profile popup ---------- */
 let PROF_NAME=null;
 function memberByName(n){return MEMBERS.find(m=>m.name===n);}
 function openProfile(name){
   PROF_NAME=name;
   document.getElementById('profovl').classList.add('show');
+  notifyOverlayState();
   refreshProfile();
   const btn=document.getElementById('profmention');
   btn.onclick=()=>{const i=document.getElementById('msgin');i.value+='@'+name+' ';closeProfile();i.focus();};
 }
-function closeProfile(){PROF_NAME=null;document.getElementById('profovl').classList.remove('show');}
+function closeProfile(){PROF_NAME=null;document.getElementById('profovl').classList.remove('show');notifyOverlayState();}
 function saveDesc(){
   const ta=document.getElementById('descinput');
   const val=(ta.value||'').trim();
@@ -506,9 +516,10 @@ function toggleNotif(){
 function openAdmin(){
   if(!ADMIN_ENABLED){toast('التواصل مع الإدارة غير مفعّل حالياً');return;}
   document.getElementById('adminovl').classList.add('show');
+  notifyOverlayState();
   setTimeout(()=>document.getElementById('admintxt').focus(),50);
 }
-function closeAdmin(){document.getElementById('adminovl').classList.remove('show');document.getElementById('admintxt').value='';}
+function closeAdmin(){document.getElementById('adminovl').classList.remove('show');document.getElementById('admintxt').value='';notifyOverlayState();}
 function sendAdmin(){
   const t=document.getElementById('admintxt').value.trim();
   if(!t)return;
@@ -591,6 +602,7 @@ let MY_CLAN=null, MY_CLAN_INVITES=[], MY_IS_OWNER=false, CLAN_VIEW=null, CLAN_SC
 function openClanPanel(){ CLAN_PICK_COLOR='#F7820E';
   CLAN_VIEW=null; CLAN_SCREEN='main'; MY_CLAN_LOADED=false;
   document.getElementById('clanovl').classList.add('show');
+  notifyOverlayState();
   sendToLua('clanmine:');
   sendToLua('clanemojis:');
   renderClan();
@@ -603,6 +615,7 @@ function openClanPanel(){ CLAN_PICK_COLOR='#F7820E';
 function openClanDetails(name){
   CLAN_VIEW={loading:true,name:name};
   document.getElementById('clanovl').classList.add('show');
+  notifyOverlayState();
   sendToLua('clandetails:'+name);
   renderClan();
   // احتياط: لو ضاع الرد، نعيد الطلب لين يجي
@@ -612,7 +625,7 @@ function openClanDetails(name){
   // آخر محاولة: لو ما جا رد، نعرض رسالة بدل الدوران الأبدي
   setTimeout(()=>{ if(CLAN_VIEW&&CLAN_VIEW.loading&&CLAN_VIEW.name===want){ CLAN_VIEW={loading:false,name:want,owner:'؟',members:[],count:0,failed:true}; renderClan(); toast('تعذّر جلب بيانات الكلان — حاول ثانية'); } }, 6000);
 }
-function closeClan(){ document.getElementById('clanovl').classList.remove('show'); CLAN_VIEW=null; CLAN_SCREEN='main'; }
+function closeClan(){ document.getElementById('clanovl').classList.remove('show'); CLAN_VIEW=null; CLAN_SCREEN='main'; notifyOverlayState(); }
 
 function clanHeadColor(col){
   const c=(col&&/^#[0-9a-fA-F]{6}$/.test(col))?col:'#8757D4';
@@ -753,7 +766,7 @@ function renderClan(){
     }
     h+=`</div>`;
     h+=`<div class="cl" style="font-size:12px;margin:10px 0 4px">${MY_CLAN.emoji||'🛡️'} إيموجي الكلان</div>`;
-    h+=clanEmojiGrid(MY_CLAN.emoji);
+    h+=clanEmojiGrid(CLAN_PICK_EMOJI);
     h+=`<div class="cbtns"><button class="cbtn pri" onclick="clanSaveEdit()">حفظ</button><button class="cbtn" onclick="clanBack()">رجوع</button></div>`;
     body.innerHTML=h;
     return;
@@ -1007,7 +1020,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v7.1'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v7.2'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>
