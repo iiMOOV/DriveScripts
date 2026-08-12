@@ -2766,55 +2766,32 @@ local __dcOk, DriveChat = pcall(function()
 
       -- ===== التحجيم: نفس نظام المنيو [28] بالحرف =====
       -- المقبض بالزاوية السفلية اليمنى، النافذة تكبر من الزاوية العليا اليسرى الثابتة (بدون إعادة تثبيت).
-      local GRIP = 26
-      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
-        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)   -- نرسم سطح المتصفح الثابت (BROWSER_RES) متكيّف لحجم النافذة الحالي
-        local mlp = ui.mouseLocalPos()
-
-        -- تحجيم من الزاوية السفلية اليمنى — نفس منطق drawMenuHost بالضبط
-        local overGrip = mlp.x >= (S.W - GRIP) and mlp.x <= S.W and mlp.y >= (S.H - GRIP) and mlp.y <= S.H
-        if overGrip and ui.mouseDown(ui.MouseButton.Left) and not S.sizing and not S.dragging then
-          S.sizing = true; S.szStart = ui.mousePos(); S.szWH = vec2(S.W, S.H)
-        end
-        if S.sizing then
-          if ui.mouseDown(ui.MouseButton.Left) then
-            local mp = ui.mousePos()
-            S.W = math.max(480, math.min(1400, S.szWH.x + (mp.x - S.szStart.x)))
-            S.H = math.max(360, math.min(950, S.szWH.y + (mp.y - S.szStart.y)))
-          else
-            S.sizing = false
-            cStor.dc_w = S.W; cStor.dc_h = S.H
-            -- ما نعيد البناء: المتصفح بدقة ثابتة ويُرسم متكيّف، فالرسايل ما تختفي والحجم يتغيّر فوراً
-          end
-        end
-
-        -- علامة المقبض (٣ خطوط برتقالية بالزاوية السفلية اليمنى)
+      ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), function()
+        S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
+        -- علامة التحجيم (زاوية سفلية يسرى)
         do
-          local hot = overGrip or S.sizing
-          ui.drawRectFilled(vec2(S.W - GRIP, S.H - GRIP), vec2(S.W, S.H), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.20 or 0.0), 6)
+          local gy = S.H
           for gi = 1, 3 do
-            local o = gi * 6
-            ui.drawLine(vec2(S.W - o, S.H - 3), vec2(S.W - 3, S.H - o), rgbm(ACC.r, ACC.g, ACC.b, hot and 0.95 or 0.5), 2)
+            local o = gi * 4
+            ui.drawLine(vec2(2, gy - o), vec2(o, gy - 2), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 1.5)
           end
-          if hot then ui.setMouseCursor(ui.MouseCursor.ResizeNWSE) end
         end
-
-        -- إدخال الماوس للصفحة — فقط لو مو محجّم/ساحب ومو فوق المقبض
-        if not S.dragging and not S.sizing and not overGrip then
+        if not S.dragging and not S.sizing then
           local uis = ac.getUI()
+          local mlp = ui.mouseLocalPos()
           S.browser:mouseInput(vec2(mlp.x / S.W, mlp.y / S.H),
             { uis.isMouseLeftKeyDown, uis.isMouseRightKeyDown, uis.isMouseMiddleKeyDown }, uis.mouseWheel)
           S.browser:focus(true)
           ui.setMouseCursor(S.browser:mouseCursor())
-        end
-        if not S.dragging and not S.sizing then
+          -- التقاط الكيبورد كامل طول ما نافذة الشات مفتوحة (نفس أسلوب IDDL المجرّب)
+          -- يوصل الكتابة للصفحة ويمنع كيبيندات السكربتات الثانية (حماية ReplayManager)
           local kb = ui.captureKeyboard(true, true)
           if kb then S.browser:keyboard(kb) end
         end
       end)
 
-      -- كليك برا النافذة = قفل (ما نقفل وقت التحجيم/السحب)
-      if cClicked and not S.dragging and not S.sizing and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
+      -- كليك برا النافذة = قفل
+      if cClicked and not S.dragging and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
         closeChat()
       end
       -- Escape = قفل
