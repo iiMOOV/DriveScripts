@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v7.1", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v7.2", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -1828,7 +1828,7 @@ local __dcOk, DriveChat = pcall(function()
   -- ===== الحالة =====
   local S = {
     browser = nil, ready = false, initSent = false,
-    open = false, wantsKbd = false,
+    open = false, wantsKbd = false, overlayOpen = false,
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = CHAT_W, H = CHAT_H, dragging = false, dragOff = vec2(0, 0), prevKey = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {}, msgId = 0,
@@ -2176,6 +2176,9 @@ local __dcOk, DriveChat = pcall(function()
       return
     end
     if data:sub(1, 4) == 'kbd:' then S.wantsKbd = (data:sub(5) == '1'); return end
+    -- الصفحة تخبرنا لما تفتح نافذة منبثقة (بروفايل/كلان/إدارة) عشان نوقف سحب النافذة
+    -- (زر X فيها كان يقع بمنطقة سحب الهيدر ويُبلع كسحب بدل ما يوصل للصفحة)
+    if data:sub(1, 4) == 'ovl:' then S.overlayOpen = (data:sub(5) == '1'); return end
     if data:sub(1, 5) == 'send:' then
       local msg = data:sub(6)
       if msg == '' then return end
@@ -2700,7 +2703,7 @@ local __dcOk, DriveChat = pcall(function()
       local clp = cmp - S.pos
       local cClicked = ui.mouseClicked(ui.MouseButton.Left)
       -- منطقة السحب من الهيدر (أعلى 60px — ما عدا يسار 300px عشان أزرار التحكم RTL)
-      if cClicked and not S.dragging and inRect2(clp, vec2(300, 0), vec2(S.W, 60)) then
+      if cClicked and not S.dragging and not S.overlayOpen and inRect2(clp, vec2(300, 0), vec2(S.W, 60)) then
         S.dragging = true; S.dragOff = clp:clone()
       end
       if S.dragging then
@@ -2800,7 +2803,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v7.1 loaded OK — IDDL-style fixed-size chat (no resize, drag-only)")
+  ac.log("[DRIVE CHAT] v7.2 loaded OK — overlay-aware drag (X buttons in profile/clan work now)")
 end
 
 --=================================================================
@@ -3153,7 +3156,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v7.1 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v7.2 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
