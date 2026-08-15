@@ -1652,7 +1652,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v7.4", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v8.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
@@ -1854,6 +1854,8 @@ local __dcOk, DriveChat = pcall(function()
     navRetries = 0, lastNav = 0, lastOk = 0, clock = 0,
     pos = nil, W = CHAT_W, H = CHAT_H, dragging = false, dragOff = vec2(0, 0), prevKey = false,
     lastPush = 0, lastRanks = -999, ranks = {}, joined = {}, msgId = 0,
+    -- [3-CHAT] شات الكلان + الشات الخاص
+    clanChatMaxId = 0, dmLastId = {}, activeDmWith = nil, lastMsgPoll = -999,
     seen = {}, jsMode = false, acked = false, readyAt = 0,
     inputSaved = false, savedInput = nil,
     log = {}, chatReveal = 1, logDrag = false, logDragStart = vec2(0, 0), logOfsStart = vec2(0, 0),
@@ -2105,6 +2107,109 @@ local __dcOk, DriveChat = pcall(function()
     end)
   end
 
+  -- ═══════════ [3-CHAT] شات الكلان + الشات الخاص (محفوظان دائماً على البوت) ═══════════
+  -- جلب رسائل شات الكلان الجديدة (تراكمي منذ S.clanChatMaxId) — أول مرة تجيب التاريخ كامل
+  local function pollClanChat()
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local nm = myName()
+    if nm == "" then return end
+    local url = base .. '/drive/clanchat/fetch?name=' .. urlEncode(nm) .. '&since=' .. tostring(S.clanChatMaxId or 0)
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and d.messages and #d.messages > 0 and S.browser and S.ready then
+              for _, m in ipairs(d.messages) do
+                if (m.id or 0) > (S.clanChatMaxId or 0) then S.clanChatMaxId = m.id end
+              end
+              jsend('dcClanChat', d.messages)
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  -- جلب قائمة محادثاتي الخاصة (آخر رسالة + غير مقروء) — للسايدبار
+  local function pollDmList()
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local nm = myName()
+    if nm == "" then return end
+    local url = base .. '/drive/dm/list?name=' .. urlEncode(nm)
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and S.browser and S.ready then
+              jsend('dcDmList', d.conversations or {})
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  -- جلب رسائل المحادثة الخاصة المفتوحة حالياً (S.activeDmWith) — تراكمي
+  local function pollActiveDm()
+    if RANKS_URL == "" or not S.activeDmWith or S.activeDmWith == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local nm = myName()
+    if nm == "" then return end
+    S.dmLastId = S.dmLastId or {}
+    local since = S.dmLastId[S.activeDmWith] or 0
+    local url = base .. '/drive/dm/fetch?name=' .. urlEncode(nm) .. '&withName=' .. urlEncode(S.activeDmWith) .. '&since=' .. tostring(since)
+    local withName = S.activeDmWith
+    pcall(function()
+      web.get(url, function(err, resp)
+        if not err and resp and resp.body then
+          pcall(function()
+            local d = JSON.parse(resp.body)
+            if d and d.ok and d.messages and #d.messages > 0 and S.browser and S.ready then
+              S.dmLastId[withName] = math.max(S.dmLastId[withName] or 0, since)
+              for _, m in ipairs(d.messages) do
+                if (m.id or 0) > S.dmLastId[withName] then S.dmLastId[withName] = m.id end
+              end
+              jsend('dcDmMsgs', { withName = withName, messages = d.messages })
+            end
+          end)
+        end
+      end)
+    end)
+  end
+
+  -- إرسال رسالة لشات الكلان (نص أو ملصق) — يجيب فوراً بعد الإرسال (ما ننتظر الدورة)
+  local function clanSendChat(text, sticker)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body
+    if sticker then body = '{"name":' .. jsonStr(myName()) .. ',"sticker":' .. jsonStr(sticker) .. '}'
+    else body = '{"name":' .. jsonStr(myName()) .. ',"text":' .. jsonStr(text) .. '}' end
+    pcall(function()
+      web.post(base .. '/drive/clanchat/send', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        pollClanChat()
+      end)
+    end)
+  end
+
+  -- إرسال رسالة خاصة (نص أو ملصق) — يجيب فوراً بعد الإرسال
+  local function dmSend(targetName, text, sticker)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body
+    if sticker then body = '{"name":' .. jsonStr(myName()) .. ',"targetName":' .. jsonStr(targetName) .. ',"sticker":' .. jsonStr(sticker) .. '}'
+    else body = '{"name":' .. jsonStr(myName()) .. ',"targetName":' .. jsonStr(targetName) .. ',"text":' .. jsonStr(text) .. '}' end
+    S.activeDmWith = targetName
+    pcall(function()
+      web.post(base .. '/drive/dm/send', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        pollActiveDm(); pollDmList()
+      end)
+    end)
+  end
+
   local function sendDescription(txt)
     if RANKS_URL == "" then return end
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
@@ -2243,6 +2348,32 @@ local __dcOk, DriveChat = pcall(function()
     end
     -- ===== أوامر الكلانات =====
     if data:sub(1, 9) == 'clanmine:' then clanFetchMine(); return end
+    -- ═══════════ [3-CHAT] شات الكلان + الشات الخاص ═══════════
+    if data:sub(1, 9) == 'clansend:' then clanSendChat(data:sub(10), nil); return end
+    if data:sub(1, 14) == 'clansendstick:' then clanSendChat(nil, data:sub(15)); return end
+    if data == 'clanchatfetch:0' then S.clanChatMaxId = 0; pollClanChat(); return end
+    if data:sub(1, 7) == 'dmsend:' then
+      local okp, obj = pcall(function() return JSON.parse(data:sub(8)) end)
+      if okp and obj and obj.withName and obj.text then dmSend(obj.withName, obj.text, nil) end
+      return
+    end
+    if data:sub(1, 12) == 'dmsendstick:' then
+      local okp, obj = pcall(function() return JSON.parse(data:sub(13)) end)
+      if okp and obj and obj.withName and obj.sticker then dmSend(obj.withName, nil, obj.sticker) end
+      return
+    end
+    if data:sub(1, 8) == 'dmfetch:' then
+      local okp, obj = pcall(function() return JSON.parse(data:sub(9)) end)
+      if okp and obj and obj.withName then
+        S.activeDmWith = obj.withName
+        S.dmLastId = S.dmLastId or {}
+        S.dmLastId[obj.withName] = tonumber(obj.since) or 0
+        pollActiveDm()
+      end
+      return
+    end
+    if data == 'dmlist:' then pollDmList(); return end
+    if data == 'dmclose:' then S.activeDmWith = nil; return end
     if data:sub(1, 12) == 'clandetails:' then clanFetchDetails(data:sub(13)); return end
     if data:sub(1, 11) == 'clanemojis:' then clanFetchEmojis(); return end
     if data:sub(1, 11) == 'clancreate:' then
@@ -2656,6 +2787,14 @@ local __dcOk, DriveChat = pcall(function()
       fetchRanks()
     end
 
+    -- [3-CHAT] شات الكلان + قائمة المحادثات الخاصة + المحادثة المفتوحة (كل 4 ثواني)
+    if RANKS_URL ~= "" and (now - S.lastMsgPoll) > 4 then
+      S.lastMsgPoll = now
+      pollClanChat()
+      pollDmList()
+      pollActiveDm()
+    end
+
     -- دفع قائمة الأعضاء + بياناتهم الحية (كل ثانية)
     if S.browser and S.ready and (now - S.lastPush) > 1 then
       S.lastPush = now
@@ -2827,7 +2966,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v7.3 loaded OK — own-message dup fix (msgsync skips mine)")
+  ac.log("[DRIVE CHAT] v8.0 loaded OK — 3-chat system (general/clan/private, clan+DM persistent)")
 end
 
 --=================================================================
@@ -3182,7 +3321,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v7.4 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v8.0 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
