@@ -65,6 +65,9 @@ local CFG = {
   REWIND_SPEED    = 2.0,
 }
 
+-- تفضيل المستخدم: إخفاء شعارَي "اضغط D/C" (يفيد مثلاً وقت البث) — زر تبديل بأعلى القائمة
+local hintStor = ac.storage{ hide_hints = false }
+
 local FONT = CFG.FONT
 
 --=================================================================
@@ -1649,12 +1652,31 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v7.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v7.4", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
-  -- ===== الشريط العلوي: حالة + إغلاق =====
+  -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
   local CWid = W - CX - 16
   dwBox("● ONLINE", 11, CX, 14, 100, 16, CGR)
+
+  -- زر تبديل إخفاء/إظهار شعارَي "اضغط D/C" (يفيد وقت البث مثلاً)
+  do
+    local hidden = hintStor.hide_hints
+    ui.setCursor(vec2(W - 80, 12))
+    local hcl = ui.invisibleButton("##hideHints", vec2(30, 30))
+    local hhov = ui.itemHovered()
+    ui.drawRectFilled(vec2(W - 80, 12), vec2(W - 50, 42), hhov and rgbm(1, 1, 1, 0.10) or rgbm(1, 1, 1, 0.06), 8)
+    ui.drawRect(vec2(W - 80, 12), vec2(W - 50, 42), rgbm(1, 1, 1, 0.12), 8, nil, 1)
+    local ecx, ecy = W - 65, 27
+    local ecol = hidden and CDm or ACC
+    ui.drawCircle(vec2(ecx, ecy), 7, ecol, 24, 1.6)
+    if hidden then
+      ui.drawLine(vec2(ecx - 8, ecy - 8), vec2(ecx + 8, ecy + 8), ecol, 1.8)
+    else
+      ui.drawCircleFilled(vec2(ecx, ecy), 2.6, ecol)
+    end
+    if hcl then hintStor.hide_hints = not hidden end
+  end
 
   ui.setCursor(vec2(W - 42, 12))
   local xcl = ui.invisibleButton("##close", vec2(30, 30))
@@ -3061,6 +3083,7 @@ end
 -- ويختفي لو التطبيق نفسه مقفول من قائمة تطبيقات CSP.
 local function drawOpenHint()
   if not CFG.SHOW_OPEN_HINT then return end
+  if hintStor.hide_hints then return end
   if panelOpen then return end
 
   local screen = ac.getUI().windowSize
@@ -3083,6 +3106,7 @@ end
 -- شعار "اضغط C لفتح الشات" — أسفل الشاشة، يظهر فقط لما يكون الشات مقفول (نفس ستايل شعار D)
 local function drawChatHint()
   if not CFG.SHOW_OPEN_HINT then return end
+  if hintStor.hide_hints then return end
   if DriveChat.isOpen() then return end
 
   local screen = ac.getUI().windowSize
@@ -3158,7 +3182,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v7.3 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v7.4 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
