@@ -4,7 +4,7 @@
 -- 100% Arabic UI & Admin Only Access
 ---------------------------------------------------------------
 local allowedAdmins = {
-    ["76561198238092614"] = true, -- Moov
+    ["76561198238092615"] = true, -- Moov
     ["76561199514389130"] = true, -- Abo khaled
     ["76561198964066927"] = true, -- 8NOOZ
     ["76561199549744707"] = true, -- Moov secnod account
