@@ -61,7 +61,7 @@ body{display:flex;align-items:center;justify-content:center}
 .srch input{flex:1;background:none;border:none;outline:none;color:var(--tx);font-size:13px;padding:9px 0}
 .srch input::placeholder{color:var(--mut)}
 /* ===== [3-CHAT SIDEBAR] عامة/الكلان/خاصة ===== */
-.chside{width:250px;flex:0 0 250px;background:var(--side);border:1px solid var(--line);border-radius:12px;
+.chside{width:220px;flex:0 0 220px;background:var(--side);border:1px solid var(--line);border-radius:12px;
   display:flex;flex-direction:column;margin-left:14px;overflow:hidden}
 .chtabs{display:flex;gap:6px;padding:12px 12px 8px}
 .chtab{flex:1;background:#17161e;border:1px solid var(--line);border-radius:10px;padding:9px 4px;cursor:pointer;
@@ -104,7 +104,7 @@ body{display:flex;align-items:center;justify-content:center}
 
 /* chat */
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
-.msgs{flex:1;overflow-y:auto;background:var(--chat);border:1px solid var(--line);border-radius:12px;padding:14px 12px}
+.msgs{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--chat);border:1px solid var(--line);border-radius:12px;padding:14px 12px}
 .msg{display:flex;gap:12px;margin-bottom:16px;align-items:flex-start;animation:pop .18s ease}
 @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .msg.mine{flex-direction:row-reverse}
@@ -116,7 +116,7 @@ body{display:flex;align-items:center;justify-content:center}
 .mname{font-weight:700;font-size:14px;color:var(--acc);cursor:pointer}
 .mname:hover{text-decoration:underline}
 .mtime{font-size:11px;color:var(--mut)}
-.bub{background:var(--bub-o);border-radius:12px;padding:9px 13px;color:var(--tx);font-size:15px;line-height:1.5;word-wrap:break-word}
+.bub{background:var(--bub-o);border-radius:12px;padding:9px 13px;color:var(--tx);font-size:15px;line-height:1.5;word-wrap:break-word;overflow-wrap:anywhere}
 .msg.mine .bub{background:var(--bub-m);border-right:3px solid var(--acc)}
 .msg.sys .bub{background:#100F14;color:#f0c8a0;text-align:center;border:1px solid rgba(247,130,14,.25)}
 .bub img.stick{max-width:150px;max-height:150px;border-radius:10px;display:block}
@@ -660,8 +660,8 @@ function genericBubble(container, m, isMine, seenSet){
   row.className='msg'+(isMine?' mine':'');
   const time=fmtT(m.t);
   const inner = m.sticker ? `<img class="stick" src="${m.sticker}">` : esc(m.text||'');
-  row.innerHTML=`<div class="mav">${avatarHTML({name:m.name},40)}</div>
-    <div class="mbody"><div class="mhead"><span class="mname">${esc(m.name)}</span><span class="mtime">${time}</span></div>
+  row.innerHTML=`<div class="mav">${avatarHTML({name:m.name,avatar:m.avatar},40)}</div>
+    <div class="mbody"><div class="mhead"><span class="mname">${esc(m.name)}</span>${badgeHTML(m.rank,m.rankColor)}<span class="mtime">${time}</span></div>
     <div class="bub">${inner}</div></div>`;
   const nm=row.querySelector('.mname');
   if(nm && !isMine) nm.onclick=()=>openProfile(m.name);
@@ -684,7 +684,10 @@ function switchChannel(ch){
   if(ch==='general'){
     list.innerHTML=`<div class="chrow active"><span class="ic">🌐</span><div class="info"><div class="ttl">دردشة عامة</div><div class="sub">دردشة عامة لجميع اللاعبين</div></div></div>`;
   } else if(ch==='clan'){
-    if(!MY_CLAN){
+    if(!MY_CLAN_LOADED){
+      list.innerHTML=`<div class="chempty">⏳ جاري التحقق من كلانك...</div>`;
+      sendToLua('clanmine:');
+    } else if(!MY_CLAN){
       list.innerHTML=`<div class="chempty">🛡️ انضم لكلان أول عشان تشوف شاته</div>`;
     } else {
       list.innerHTML=`<div class="chrow active"><span class="ic">${esc(MY_CLAN.emoji||'🛡️')}</span><div class="info"><div class="ttl">دردشة ${esc(MY_CLAN.name)}</div><div class="sub">خاصة بأعضاء الكلان</div></div></div>`;
@@ -1234,7 +1237,7 @@ const HANDLERS = {
     else if(d.reason==='target_not_linked'){ toast('هذا اللاعب غير مربوط بالديسكورد'); }
     else { toast('تعذّر تسجيل اللايك'); }
   },
-  dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_IS_COLEADER=!!d.isCoLeader; MY_CLAN_INVITES=d.invites||[]; MY_CAN_CREATE=(d.canCreate!==false); MY_CLAN_LOADED=true; if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); },
+  dcClanMine:(d)=>{ d=d||{}; MY_CLAN=d.clan||null; MY_IS_OWNER=!!d.isOwner; MY_IS_COLEADER=!!d.isCoLeader; MY_CLAN_INVITES=d.invites||[]; MY_CAN_CREATE=(d.canCreate!==false); MY_CLAN_LOADED=true; if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW) renderClan(); if(ACTIVE_CHANNEL==='clan') switchChannel('clan'); },
   dcClanEmojis:(d)=>{ d=d||{}; const idxs=d.takenIdx||[]; CLAN_EMOJIS_TAKEN=idxs.map(i=>CLAN_EMOJIS_ALL[i]).filter(Boolean); if(d.unlockedSlots) CLAN_EMOJI_SLOTS=d.unlockedSlots; if(d.perRow) CLAN_EMOJI_PERROW=d.perRow; if(!CLAN_PICK_EMOJI||CLAN_EMOJIS_TAKEN.includes(CLAN_PICK_EMOJI)){ CLAN_PICK_EMOJI=(CLAN_EMOJIS_ALL.find((e,i)=>i<CLAN_EMOJI_SLOTS&&!CLAN_EMOJIS_TAKEN.includes(e))||'🛡️'); } if(document.getElementById('clanovl').classList.contains('show')&&!CLAN_VIEW&&(CLAN_SCREEN==='main'||CLAN_SCREEN==='edit')) renderClan(); },
   dcClanDetails:(d)=>{ d=d||{}; if(d.clan){ CLAN_VIEW=Object.assign({loading:false},d.clan); } else { CLAN_VIEW={loading:false,name:'؟',owner:'؟',members:[],count:0}; toast('الكلان غير موجود'); } if(document.getElementById('clanovl').classList.contains('show')) renderClan(); },
   dcClanAck:(d)=>{ d=d||{};
@@ -1287,7 +1290,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v8.0'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v8.1'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>
