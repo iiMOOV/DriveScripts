@@ -1649,7 +1649,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v7.2", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v7.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إغلاق =====
   local CX = NAV + 16
@@ -2171,7 +2171,9 @@ local __dcOk, DriveChat = pcall(function()
     if data:sub(1, 8) == 'msgsync:' then
       local haveId = tonumber(data:sub(9)) or 0
       for _, m in ipairs(S.log) do
-        if (m.id or 0) > haveId then toBrowser(m) end
+        -- رسائلي أنا الصفحة تعرضها محلياً فور الإرسال (بدون id) — لا نعيد دفعها هنا
+        -- (كانت تتكرر عندي بس: الصفحة ما تعرف id نسختها المحلية فتظنها ناقصة وتطلبها، فتتكرر)
+        if (m.id or 0) > haveId and not m.mine then toBrowser(m) end
       end
       return
     end
@@ -2803,7 +2805,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v7.2 loaded OK — overlay-aware drag (X buttons in profile/clan work now)")
+  ac.log("[DRIVE CHAT] v7.3 loaded OK — own-message dup fix (msgsync skips mine)")
 end
 
 --=================================================================
@@ -3156,7 +3158,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v7.2 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v7.3 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
