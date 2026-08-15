@@ -3,7 +3,6 @@
 -- Theme: Orange / Yellow / Black
 -- 100% Arabic UI & Admin Only Access
 ---------------------------------------------------------------
-local mySteamID = tostring(ac.getUserSteamID(0))
 local allowedAdmins = {
     ["76561198238092614"] = true, -- Moov
     ["76561199514389130"] = true, -- Abo khaled
@@ -15,8 +14,15 @@ local allowedAdmins = {
     ["76561199263273952"] = true, -- vBrns
     ["76561199486830183"] = true, -- l5b6h
 }
--- السكربت يشتغل للجميع؛ اللوحة تُحجب على الأدمن لاحقاً، ومفاتيح الشدة تشتغل للكل
-local isAdmin = allowedAdmins[mySteamID] == true
+-- السكربت يشتغل للجميع؛ اللوحة تُحجب على الأدمن. مفاتيح الشدة (نقطة التجمع) تشتغل للكل عمداً.
+-- isAdmin يُحدَّث كل فريم (مو مرة وحدة عند التحميل) — عشان لو Steam ID ما جهز
+-- بعد باللحظة الأولى، ما يتجمد على false للأدمن الحقيقي.
+local isAdmin = false
+local function refreshIsAdmin()
+  local sid = tostring(ac.getUserSteamID(0))
+  isAdmin = allowedAdmins[sid] == true
+end
+refreshIsAdmin()
 
  
 
@@ -35,11 +41,15 @@ local activeTab = 1
 
 -- ===== [ALWAYS-ON ADMIN HOST] — نفس فكرة [28] بالمنيو الرئيسي بالحرف =====
 -- يرسم اللوحة مباشرة بدون الحاجة تفعّل "Drive | ADMIN MENU" من قائمة الاكسترا،
--- وتبقى محصورة بالأدمن فقط (يُفحص isAdmin قبل أي رسم أو تفعيل مفتاح).
+-- وتبقى محصورة بالأدمن فقط (يُفحص isAdmin الطازج كل فريم قبل أي رسم أو تفعيل مفتاح).
 local hostStor = ac.storage{ ax = -1.0, ay = -1.0 }
 local adminHost = { drag = false, dragOff = vec2(0, 0) }
 local clock = 0   -- ساعة داخلية بسيطة لنبض تلميح الفتح (يزيد بـ dt كل فريم)
 local lastDrawClock = -999   -- آخر مرة رسمت اللوحة عبر الاكسترا الأصلية (لمنع الرسم المكرر لو فعّلها الأدمن يدوياً أيضاً)
+local registeredExtra = false   -- هل سجّلنا الاكسترا الأصلية؟ (نسجّلها أول ما يتأكد isAdmin، مو مقفولة على فريم التحميل)
+
+-- تفضيل الأدمن: إخفاء شعار "اضغط ] لفتح لوحة الإدمن" (نفس فكرة زر الإخفاء بالمنيو الرئيسي)
+local hintStor = ac.storage{ hide_hint = false }
 
 
 local WINDOW_TITLE = 'Drive | ADMIN MENU'
@@ -711,6 +721,25 @@ local function adminPanelBody()
   local CWid = W - CX - 16
   dwBox("● ADMIN", 12, CX, 14, 100, 16, CGR)
 
+  -- زر تبديل إخفاء/إظهار شعار "اضغط ] لفتح لوحة الإدمن" (نفس فكرة زر الإخفاء بالمنيو الرئيسي)
+  do
+    local hidden = hintStor.hide_hint
+    ui.setCursor(vec2(W - 80, 12))
+    local hcl = ui.invisibleButton("##hideAdminHint", vec2(30, 30))
+    local hhov = ui.itemHovered()
+    ui.drawRectFilled(vec2(W - 80, 12), vec2(W - 50, 42), hhov and rgbm(1, 1, 1, 0.10) or rgbm(1, 1, 1, 0.06), 8)
+    ui.drawRect(vec2(W - 80, 12), vec2(W - 50, 42), rgbm(1, 1, 1, 0.12), 8, nil, 1)
+    local ecx, ecy = W - 65, 27
+    local ecol = hidden and CDm or ACC
+    ui.drawCircle(vec2(ecx, ecy), 7, ecol, 24, 1.6)
+    if hidden then
+      ui.drawLine(vec2(ecx - 8, ecy - 8), vec2(ecx + 8, ecy + 8), ecol, 1.8)
+    else
+      ui.drawCircleFilled(vec2(ecx, ecy), 2.6, ecol)
+    end
+    if hcl then hintStor.hide_hint = not hidden end
+  end
+
   ui.setCursor(vec2(W - 42, 12))
   local xcl = ui.invisibleButton("##close", vec2(30, 30))
   local xhov = ui.itemHovered()
@@ -761,12 +790,24 @@ local function mainUI()
   adminPanelBody()
 end
 
+-- تسجيل الاكسترا الأصلية بشكل كسول (مو مقفول على فريم التحميل) — أول ما isAdmin
+-- يتأكد "true" (بعد ما يجهز Steam ID)، نسجّلها فوراً. غير الأدمن ما تُسجَّل لهم أبداً.
+local function tryRegisterExtra()
+  if registeredExtra or not isAdmin then return end
+  registeredExtra = true
+  pcall(function()
+    ui.registerOnlineExtra(WINDOW_ICON, WINDOW_TITLE, function() return true end, mainUI, nil, ui.OnlineExtraFlags.Tool)
+  end)
+end
+
 
 ---------------------------------------------------------------
 -- Background Logic (Update)
 ---------------------------------------------------------------
 function script.update(dt)
   clock = clock + dt
+  refreshIsAdmin()   -- 🔒 نتأكد من هوية الأدمن كل فريم (مو مرة وحدة عند التحميل)
+  tryRegisterExtra()
   local canCap = true
   if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then canCap = false end
   if type(ac.isChatOpen) == "function" and ac.isChatOpen() then canCap = false end
@@ -782,13 +823,10 @@ function script.update(dt)
   end
 
   if fastCooldownTimer > 0 then fastCooldownTimer = fastCooldownTimer - dt end
-  -- تنبيهات الرادار/الجماعي تصل للجميع عبر بث الشبكة — لا تُقيَّد بالأدمن
   if radarTimer > 0 then radarTimer = math.max(0, radarTimer - dt) end
   if massTimer  > 0 then massTimer  = math.max(0, massTimer - dt) end
   if soundHold  > 0 then soundHold  = math.max(0, soundHold - dt) end
 
-  -- مفاتيح الشدة (نقطة التجمع): الأدمن يحدد النظام من لوحته (تبقى محصورة عليه)،
-  -- بس مفاتيح التيليبورت نفسها تشتغل لكل اللاعبين عشان يقدرون يتجمعون عندها
   if canCap then
       for keyName, keyIndex in pairs(SHADDA_KEYS) do
           local isDown = ui.keyboardButtonDown(keyIndex)
@@ -866,10 +904,12 @@ local function drawAdminHost()
 end
 
 -- شعار "اضغط ] لفتح لوحة الإدمن" — نفس ستايل شعارَي D/C بالمنيو الرئيسي بالضبط،
--- بس بأعلى اليمين عشان ما يتداخل معهم. يظهر للأدمن فقط، ولما تكون اللوحة مقفولة.
+-- بس بأعلى اليمين عشان ما يتداخل معهم. يظهر للأدمن فقط، ولما تكون اللوحة مقفولة،
+-- وله نفس زر الإخفاء اللي بالمنيو الرئيسي (hintStor.hide_hint، من داخل اللوحة).
 local function drawAdminOpenHint()
   if not isAdmin then return end
   if panelOpen then return end
+  if hintStor.hide_hint then return end
   local sim = ac.getSim()
   if not sim then return end
   local intro = clock < 15
@@ -905,14 +945,4 @@ function script.drawUI()
   drawAdminOpenHint()
 end
 
-ac.log("DRIVE Admin Master UI v1.1 loaded — always-on host + admin-only shadda keys + CGR/label fixes")
-if isAdmin then
-ui.registerOnlineExtra(
-    WINDOW_ICON,
-    WINDOW_TITLE,
-    function() return true end,
-    mainUI,
-    nil,
-    ui.OnlineExtraFlags.Tool
-)
-end
+ac.log("DRIVE Admin Master UI v1.3 loaded — dynamic isAdmin (fixes SteamID-timing failure) + hint toggle")
