@@ -374,7 +374,7 @@ function clanChip(m){
   if(!m || !m.clan || m.clan===false || m.clan==='') return '';
   const col=(m.clanColor&&/^#[0-9a-fA-F]{6}$/.test(m.clanColor))?m.clanColor:'#8757D4';
   const tag=(m.clanTag&&m.clanTag!==false)?m.clanTag:m.clan;
-  return `<span class="badge clanchip" style="background:${col}22;color:${col};border:1px solid ${col}" onclick="event.stopPropagation();openClanDetails('${String(m.clan).replace(/'/g,"")}')">[${esc(String(tag))}]</span>`;
+  return `<span class="badge clanchip" style="background:${col}22;color:#fff;border:1px solid ${col}" onclick="event.stopPropagation();openClanDetails('${String(m.clan).replace(/'/g,"")}')">[${esc(String(tag))}]</span>`;
 }
 function renderMembers(){
   const q=(document.getElementById('memsearch').value||'').toLowerCase();
@@ -461,7 +461,7 @@ function refreshProfile(){
   if(m.clan&&m.clan!==false&&m.clan!==''){
     const col=(m.clanColor&&/^#[0-9a-fA-F]{6}$/.test(m.clanColor))?m.clanColor:'#8757D4';
     const em=(m.clanEmoji&&m.clanEmoji!==false)?m.clanEmoji:'🛡️';
-    pc.innerHTML=`<span style="display:inline-flex;align-items:center;gap:6px;background:${col}22;color:${col};border:1px solid ${col};border-radius:20px;padding:3px 11px;cursor:pointer;font-weight:800;font-size:12.5px" onclick="openClanDetails('${String(m.clan).replace(/'/g,"")}')">${em} ${esc(String(m.clan))} ${m.clanTag&&m.clanTag!==false?('<span style=\'opacity:.7\'>['+esc(String(m.clanTag))+']</span>'):''}</span>`;
+    pc.innerHTML=`<span style="display:inline-flex;align-items:center;gap:6px;background:${col}22;color:#fff;border:1px solid ${col};border-radius:20px;padding:3px 11px;cursor:pointer;font-weight:800;font-size:12.5px" onclick="openClanDetails('${String(m.clan).replace(/'/g,"")}')">${em} ${esc(String(m.clan))} ${m.clanTag&&m.clanTag!==false?('<span style=\'opacity:.7\'>['+esc(String(m.clanTag))+']</span>'):''}</span>`;
   } else {
     pc.innerHTML='<span style="color:var(--mut)">بدون كلان</span>';
   }
@@ -655,12 +655,6 @@ function clanLevelBar(c){
   }
   // عدد المتواجدين الآن (يسرّع الترقية)
   if(c.onlineNow>0) h+=`<div style="font-size:11px;color:#12B886;margin-top:6px;text-align:center">🟢 ${c.onlineNow} من الأعضاء متواجد الآن — XP ×${c.onlineNow}</div>`;
-  // مكافآت مفتوحة الآن
-  if((c.perks||[]).length){
-    h+=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:9px">`;
-    (c.perks||[]).forEach(p=>{ h+=`<span style="font-size:10.5px;background:#F5C51822;color:#F5C518;border:1px solid #F5C51855;border-radius:20px;padding:2px 8px">${PERK_LABELS[p]||p}</span>`; });
-    h+=`</div>`;
-  }
   h+=`</div>`;
   return h;
 }
@@ -694,7 +688,7 @@ function clanMemberRow(mm,col,showActions){
   }
   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#17161e;border:1px solid #23212e;border-radius:10px">
     <span style="display:flex;align-items:center;gap:9px">
-      <span style="width:30px;height:30px;border-radius:50%;background:${col}33;border:1.5px solid ${col};display:flex;align-items:center;justify-content:center;font-weight:900;color:${col};font-size:14px">${esc(initial)}</span>
+      <span style="width:30px;height:30px;border-radius:50%;background:${col}33;border:1.5px solid ${col};display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;font-size:14px">${esc(initial)}</span>
       <span style="display:flex;flex-direction:column"><span style="font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${esc(mm.name)} ${roleBadge}</span>${lv}</span>
     </span>${act}</div>`;
 }
@@ -758,9 +752,16 @@ function renderClan(){
       h+=`<button onclick="clanPickColor('${pc}')" title="${pc}" style="width:34px;height:34px;border-radius:9px;border:2px solid ${on?'#fff':'#23212e'};background:${pc};cursor:pointer"></button>`;
     });
     if(MY_CLAN.customColor){
-      // تخصيص حر (مفتوح بمستوى 8+)
-      h+=`<label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#F5C518;cursor:pointer;background:#17161e;border:1px solid #F5C51855;border-radius:9px;padding:6px 9px">
-        ✨ لون حر <input type="color" value="${col}" oninput="clanPickColor(this.value)" style="width:26px;height:26px;background:none;border:none;cursor:pointer;padding:0"></label>`;
+      // تخصيص حر (مفتوح بمستوى 8+) — سلايدر داخل الصفحة بالكامل (بدون نافذة نظام)
+      // لأن input type=color يفتح حوار نظام خارج نطاق نقر المتصفح المدمج، فيسبب
+      // إغلاق النافذة كل ما تضغط عليه (النقر يُقرأ وكأنه "خارج نافذة الشات")
+      const hue=hexToHue(col);
+      h+=`<label style="display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:#F5C518;background:#17161e;border:1px solid #F5C51855;border-radius:9px;padding:8px 10px;width:100%;margin-top:4px">
+        <span>✨ لون حر (اسحب لاختيار اللون)</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="freeColorSwatch" style="width:26px;height:26px;border-radius:7px;border:2px solid #23212e;background:${col};flex-shrink:0"></span>
+          <input type="range" min="0" max="360" value="${hue}" oninput="clanFreeColorHue(this.value)" style="flex:1;accent-color:${col};cursor:pointer">
+        </div></label>`;
     } else {
       h+=`<span style="font-size:11px;color:var(--mut);display:inline-flex;align-items:center">🔒 لون حر بمستوى 8</span>`;
     }
@@ -787,7 +788,7 @@ function renderClan(){
       MY_CLAN_INVITES.forEach(iv=>{
         const col=(iv.color&&/^#[0-9a-fA-F]{6}$/.test(iv.color))?iv.color:'#8757D4';
         h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#17161e;border:1px solid ${col}55;border-radius:10px;margin-bottom:5px">
-          <span><b style="color:${col}">${esc(iv.name)}</b> <span style="color:var(--mut);font-size:11.5px">[${esc(iv.tag||'')}] · من ${esc(iv.byName||'')}</span></span>
+          <span><b style="color:#fff">${esc(iv.name)}</b> <span style="color:var(--mut);font-size:11.5px">[${esc(iv.tag||'')}] · من ${esc(iv.byName||'')}</span></span>
           <span style="display:flex;gap:5px"><button class="cbtn pri" style="padding:5px 12px" onclick="clanRespond('${iv.clanId}',true)">قبول</button>
           <button class="cbtn" style="padding:5px 10px" onclick="clanRespond('${iv.clanId}',false)">✕</button></span></div>`;
       });
@@ -873,8 +874,45 @@ function clanEmojiGrid(current){
   h+=`<div style="font-size:10.5px;color:var(--mut);margin-bottom:6px">🔓 ${rowsOpen}/${rowsTotal} صفوف إيموجي مفتوحة · ارفع مستوى الكلان لفتح المزيد</div>`;
   return h;
 }
-function clanPickEmoji(em){ CLAN_PICK_EMOJI=em; renderClan(); }
-function clanPickColor(c){ CLAN_PICK_COLOR=c; const el=document.getElementById('clan_color')||document.getElementById('edit_color'); if(el) el.value=c; renderClan(); }
+// إعادة رسم مع الحفاظ على اسم/تاق الكلان المكتوبين (كانا يترستون لما تختار إيموجي/لون بعد الكتابة)
+function renderClanKeepText(){
+  const _n=document.getElementById('clan_name'), _t=document.getElementById('clan_tag');
+  const _nv=_n?_n.value:null, _tv=_t?_t.value:null;
+  renderClan();
+  const n2=document.getElementById('clan_name'), t2=document.getElementById('clan_tag');
+  if(n2&&_nv!=null) n2.value=_nv;
+  if(t2&&_tv!=null) t2.value=_tv;
+}
+// تحويل درجة اللون (0-360) إلى hex — للسلايدر الحر (بدون حوار نظام)
+function hslToHex(h,s,l){
+  s/=100;l/=100;
+  const k=n=>(n+h/30)%12;
+  const a=s*Math.min(l,1-l);
+  const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
+  const toHex=x=>Math.round(255*x).toString(16).padStart(2,'0');
+  return '#'+toHex(f(0))+toHex(f(8))+toHex(f(4));
+}
+// تحويل hex إلى درجة لون تقريبية — لتحديد بداية السلايدر عند فتح الشاشة
+function hexToHue(hex){
+  hex=(hex||'#F7820E').replace('#','');
+  if(hex.length!==6) return 30;
+  const r=parseInt(hex.substr(0,2),16)/255, g=parseInt(hex.substr(2,2),16)/255, b=parseInt(hex.substr(4,2),16)/255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b); let hh=0;
+  if(max===min) hh=0;
+  else if(max===r) hh=60*(((g-b)/(max-min))%6);
+  else if(max===g) hh=60*((b-r)/(max-min)+2);
+  else hh=60*((r-g)/(max-min)+4);
+  if(hh<0) hh+=360;
+  return Math.round(hh);
+}
+function clanFreeColorHue(hue){
+  const hex=hslToHex(hue,70,50);
+  const sw=document.getElementById('freeColorSwatch'); if(sw) sw.style.background=hex;
+  const el=document.getElementById('clan_color')||document.getElementById('edit_color'); if(el) el.value=hex;
+  CLAN_PICK_COLOR=hex;
+}
+function clanPickEmoji(em){ CLAN_PICK_EMOJI=em; renderClanKeepText(); }
+function clanPickColor(c){ CLAN_PICK_COLOR=c; const el=document.getElementById('clan_color')||document.getElementById('edit_color'); if(el) el.value=c; renderClanKeepText(); }
 
 // قائمة الدعوة (المتصلين)
 function renderInviteList(){
@@ -1020,7 +1058,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v7.2'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v7.3'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>
