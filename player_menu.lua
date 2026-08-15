@@ -1652,7 +1652,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v8.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v8.1", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
@@ -2108,6 +2108,22 @@ local __dcOk, DriveChat = pcall(function()
   end
 
   -- ═══════════ [3-CHAT] شات الكلان + الشات الخاص (محفوظان دائماً على البوت) ═══════════
+  -- يضيف صورة الحساب + الرتبة الحية لكل رسالة (من S.ranks) — عشان المرتبطين بديسكورد
+  -- تبان صورتهم الحقيقية بدل الحرف الأول، بنفس طريقة الشات العام بالضبط
+  local function enrichMsgs(list)
+    local out = {}
+    for i, m in ipairs(list) do
+      local r = S.ranks[m.name]
+      out[i] = {
+        id = m.id, name = m.name, text = m.text, sticker = m.sticker, t = m.t,
+        avatar = (r and r.avatar) or nil,
+        rank = (r and r.rank) or nil,
+        rankColor = (r and r.color) or nil,
+      }
+    end
+    return out
+  end
+
   -- جلب رسائل شات الكلان الجديدة (تراكمي منذ S.clanChatMaxId) — أول مرة تجيب التاريخ كامل
   local function pollClanChat()
     if RANKS_URL == "" then return end
@@ -2124,7 +2140,7 @@ local __dcOk, DriveChat = pcall(function()
               for _, m in ipairs(d.messages) do
                 if (m.id or 0) > (S.clanChatMaxId or 0) then S.clanChatMaxId = m.id end
               end
-              jsend('dcClanChat', d.messages)
+              jsend('dcClanChat', enrichMsgs(d.messages))
             end
           end)
         end
@@ -2173,7 +2189,7 @@ local __dcOk, DriveChat = pcall(function()
               for _, m in ipairs(d.messages) do
                 if (m.id or 0) > S.dmLastId[withName] then S.dmLastId[withName] = m.id end
               end
-              jsend('dcDmMsgs', { withName = withName, messages = d.messages })
+              jsend('dcDmMsgs', { withName = withName, messages = enrichMsgs(d.messages) })
             end
           end)
         end
@@ -2966,7 +2982,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v8.0 loaded OK — 3-chat system (general/clan/private, clan+DM persistent)")
+  ac.log("[DRIVE CHAT] v8.1 loaded OK — clan/DM avatars enriched + clan-tab self-fetch fix")
 end
 
 --=================================================================
@@ -3321,7 +3337,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v8.0 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v8.1 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)
