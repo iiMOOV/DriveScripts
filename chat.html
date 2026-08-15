@@ -656,12 +656,16 @@ function fmtT(ms){ if(!ms) return now(); const d=new Date(ms); return String(d.g
 // فقاعة رسالة عامة تُستخدم لشات الكلان والخاص (نسخة مبسّطة من addMessage، حاوية مختلفة، بدون نظام استرجاع المفقود العام)
 function genericBubble(container, m, isMine, seenSet){
   if(m.id!=null && seenSet){ if(seenSet.has(m.id)) return; seenSet.add(m.id); }
+  // احتياط: لو ما وصل أفاتار/رتبة مع الرسالة (الرتب ما تزامنت وقت الجلب)، نجيبها من قائمة
+  // الأعضاء الحية (نفس فكرة الفقاعات — تجيب أحدث بيانات وقت العرض، تصحّح نفسها تلقائياً)
+  let av=m.avatar, rk=m.rank, rc=m.rankColor;
+  if(!av){ const mm=MEMBERS.find(x=>x.name===m.name); if(mm){ av=mm.avatar||av; rk=rk||mm.rank; rc=rc||mm.rankColor; } }
   const row=document.createElement('div');
   row.className='msg'+(isMine?' mine':'');
   const time=fmtT(m.t);
   const inner = m.sticker ? `<img class="stick" src="${m.sticker}">` : esc(m.text||'');
-  row.innerHTML=`<div class="mav">${avatarHTML({name:m.name,avatar:m.avatar},40)}</div>
-    <div class="mbody"><div class="mhead"><span class="mname">${esc(m.name)}</span>${badgeHTML(m.rank,m.rankColor)}<span class="mtime">${time}</span></div>
+  row.innerHTML=`<div class="mav">${avatarHTML({name:m.name,avatar:av},40)}</div>
+    <div class="mbody"><div class="mhead"><span class="mname">${esc(m.name)}</span>${badgeHTML(rk,rc)}<span class="mtime">${time}</span></div>
     <div class="bub">${inner}</div></div>`;
   const nm=row.querySelector('.mname');
   if(nm && !isMine) nm.onclick=()=>openProfile(m.name);
@@ -675,9 +679,9 @@ function switchChannel(ch){
   if(ch!=='dm' && ACTIVE_DM_WITH){ ACTIVE_DM_WITH=null; try{sendToLua('dmclose:');}catch(e){} }
   ACTIVE_CHANNEL=ch;
   ['general','clan','dm'].forEach(c=>document.getElementById('chtab-'+c).classList.toggle('active', c===ch));
-  document.getElementById('msgs').style.display = ch==='general' ? 'flex' : 'none';
-  document.getElementById('clanmsgs').style.display = ch==='clan' ? 'flex' : 'none';
-  document.getElementById('dmmsgs').style.display = (ch==='dm' && ACTIVE_DM_WITH) ? 'flex' : 'none';
+  document.getElementById('msgs').style.display = ch==='general' ? 'block' : 'none';
+  document.getElementById('clanmsgs').style.display = ch==='clan' ? 'block' : 'none';
+  document.getElementById('dmmsgs').style.display = (ch==='dm' && ACTIVE_DM_WITH) ? 'block' : 'none';
   document.getElementById('dmsearchwrap').style.display = ch==='dm' ? 'flex' : 'none';
   document.getElementById('newconvbtn').style.display = ch==='dm' ? 'block' : 'none';
   const list=document.getElementById('chlist');
@@ -733,7 +737,7 @@ function openDm(withName){
   document.getElementById('chtab-dm').classList.add('active');
   document.getElementById('msgs').style.display='none';
   document.getElementById('clanmsgs').style.display='none';
-  document.getElementById('dmmsgs').style.display='flex';
+  document.getElementById('dmmsgs').style.display='block';
   document.getElementById('dmsearchwrap').style.display='none';
   document.getElementById('newconvbtn').style.display='block';
   document.getElementById('msgin').placeholder='رسالة إلى '+withName+'...';
@@ -1290,7 +1294,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v8.1'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v8.2'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>
